@@ -8,7 +8,9 @@ function createToken(user) {
     throw error
   }
 
-  return jwt.sign({ userId: user._id.toString(), role: user.role }, process.env.JWT_SECRET, {
+  const userId = user._id.toString()
+
+  return jwt.sign({ id: userId, userId, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: '7d',
   })
 }
@@ -82,9 +84,22 @@ async function login(req, res) {
   }
 
   return res.json({
-    token: createToken(user),
     user: userResponse(user),
+    token: createToken(user),
   })
 }
 
-module.exports = { register, login }
+async function getMe(req, res) {
+  try {
+    const user = await User.findById(req.user.userId)
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+    return res.json({ user: userResponse(user) })
+  } catch (error) {
+    console.error(error)
+    return res.status(500).json({ message: 'Internal server error' })
+  }
+}
+
+module.exports = { register, login, getMe }
