@@ -17,11 +17,11 @@ export const StudentNavbar = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/student/login');
+    navigate('/login?role=student');
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-brand-border h-16">
+    <header className="sticky top-0 z-40 bg-white border-b border-brand-border h-16 shrink-0">
       <div className="w-full max-w-7xl mx-auto px-4 md:px-8 h-full flex items-center justify-between">
         {/* Brand Identity */}
         <div className="flex items-center gap-4 md:gap-6">
@@ -144,10 +144,10 @@ export const StudentNavbar = () => {
           </div>
         ) : (
           <Link
-            to="/student/login"
+            to="/login?role=student"
             className="text-xs font-semibold px-4 py-2 bg-brand-yellow text-brand-text-primary rounded-xl hover:bg-brand-yellow-hover transition-colors"
           >
-            Student Login
+            Sign In
           </Link>
         )}
         </div>

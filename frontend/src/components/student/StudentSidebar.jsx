@@ -22,7 +22,7 @@ export const StudentSidebar = () => {
   ];
 
   return (
-    <aside className="hidden md:flex flex-col w-64 bg-white border-r border-brand-border shrink-0 min-h-[calc(100vh-4rem)] p-4 justify-between">
+    <aside className="hidden md:flex flex-col w-64 bg-white border-r border-brand-border shrink-0 h-full overflow-y-auto p-4 justify-between">
       <div className="space-y-6">
         {/* Navigation Section */}
         <div className="space-y-1">

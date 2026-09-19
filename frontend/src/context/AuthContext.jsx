@@ -8,6 +8,17 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const activeStored = localStorage.getItem('barabari_active_student_user');
+    if (activeStored) {
+      try {
+        setStudent(JSON.parse(activeStored));
+        setLoading(false);
+        return;
+      } catch {
+        // fallback
+      }
+    }
+
     // Check if token exists in localStorage
     const token = localStorage.getItem('barabari_student_token');
     if (token) {
@@ -35,17 +46,32 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = async (_email, _password) => {
-    // In real backend, apiClient.post('/auth/student/login', { email: _email, password: _password })
+  const login = async (_email, _password, userObj = null) => {
     sessionStorage.removeItem('barabari_logged_out');
-    localStorage.setItem('barabari_student_token', 'demo-token-ananya-2026');
+    localStorage.setItem('barabari_student_token', 'demo-token-student');
+    if (userObj) {
+      const activeStudent = {
+        id: userObj.id || 'stu-001',
+        studentId: userObj.studentId || 'BC-2026-088',
+        name: userObj.name || 'Ananya Sharma',
+        email: userObj.email || _email,
+        cohort: 'Cohort 4 • UI/UX Product Design',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+        role: 'Student'
+      };
+      localStorage.setItem('barabari_active_student_user', JSON.stringify(activeStudent));
+      setStudent(activeStudent);
+      return activeStudent;
+    }
     const profileRes = await studentApi.getStudentProfile();
-    setStudent(profileRes.data);
-    return profileRes.data;
+    const active = profileRes?.data || { name: 'Ananya Sharma', email: _email };
+    setStudent(active);
+    return active;
   };
 
   const logout = () => {
     localStorage.removeItem('barabari_student_token');
+    localStorage.removeItem('barabari_active_student_user');
     sessionStorage.setItem('barabari_logged_out', 'true');
     setStudent(null);
   };

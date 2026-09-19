@@ -14,7 +14,7 @@ async function withFallback(apiCall, mockCall) {
     if (response && response.data) {
       return response.data;
     }
-  } catch (_error) {
+  } catch {
     // In hackathon / dev mode, if BE-1 is offline, connection refused, or endpoint not yet registered, gracefully fall back to mock service
     return await mockCall();
   }

@@ -35,9 +35,9 @@ export const AssignmentDonutChart = ({
   }, { offset: 0, items: [] }).items;
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-2">
-      {/* SVG Donut */}
-      <div className="relative w-40 h-40 shrink-0 flex items-center justify-center">
+    <div className="flex flex-col items-center w-full space-y-5 p-1">
+      {/* SVG Donut Chart */}
+      <div className="relative w-40 h-40 shrink-0 flex items-center justify-center my-1">
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
           {/* Background Track Ring */}
           <circle
@@ -69,33 +69,36 @@ export const AssignmentDonutChart = ({
 
         {/* Center Total Count */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-          <span className="text-2xl font-black text-brand-text-primary leading-none">
+          <span className="text-3xl font-black text-brand-text-primary leading-none">
             {total}
           </span>
-          <span className="text-[10px] uppercase font-bold text-brand-text-secondary mt-0.5">
+          <span className="text-[10px] uppercase font-bold text-brand-text-secondary mt-1 tracking-wider">
             Total Sprints
           </span>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex-1 w-full space-y-2 text-xs">
+      {/* Description / Legend Items Stacked Vertically Below Chart */}
+      <div className="w-full space-y-2 pt-3 border-t border-brand-border/60">
         {data.map((item, idx) => {
           const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
           return (
-            <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-[#FBFBFA] border border-brand-border/60">
-              <div className="flex items-center gap-2">
+            <div
+              key={idx}
+              className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#FBFBFA] border border-brand-border/60 hover:bg-[#F5F5F0] transition-colors text-xs"
+            >
+              <div className="flex items-center gap-2.5">
                 <span
-                  className="w-3 h-3 rounded-full shrink-0"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
                 <span className="font-semibold text-brand-text-primary">
                   {item.label}
                 </span>
               </div>
-              <div className="text-right">
-                <span className="font-bold text-brand-text-primary">{item.count}</span>
-                <span className="text-[11px] text-brand-text-secondary ml-1 font-medium">
+              <div className="text-right flex items-center gap-1.5 font-mono">
+                <span className="font-bold text-brand-text-primary text-xs">{item.count}</span>
+                <span className="text-[11px] text-brand-text-secondary font-medium font-sans">
                   ({pct}%)
                 </span>
               </div>
