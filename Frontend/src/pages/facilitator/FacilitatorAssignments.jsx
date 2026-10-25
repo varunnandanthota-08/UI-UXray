@@ -18,7 +18,8 @@ import {
   X, 
   LayoutGrid,
   List,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 
 export const FacilitatorAssignments = () => {
@@ -118,6 +119,16 @@ export const FacilitatorAssignments = () => {
       setAssignments(prev => prev.map(a => a.id === id ? updated : a));
     } catch (err) {
       setApiError(err.message || 'Failed to update assignment status');
+    }
+  };
+
+  const handleDeleteAssignment = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this assignment? This cannot be undone.')) return;
+    try {
+      await assignmentApi.deleteAssignment(id);
+      setAssignments(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      setApiError(err.message || 'Failed to delete assignment');
     }
   };
 
@@ -479,6 +490,15 @@ export const FacilitatorAssignments = () => {
                             <option value="PUBLISHED">Publish</option>
                             <option value="CLOSED">Close</option>
                           </select>
+
+                          {/* Delete Action */}
+                          <button
+                            onClick={() => handleDeleteAssignment(asg.id)}
+                            className="p-1.5 rounded-lg text-brand-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete Assignment"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -578,6 +598,13 @@ export const FacilitatorAssignments = () => {
                     >
                       Edit
                     </Button>
+                    <button
+                      onClick={() => handleDeleteAssignment(asg.id)}
+                      className="p-1.5 rounded-lg text-brand-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Delete Assignment"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   <Link to={`/facilitator/submissions?assignmentId=${asg.id}`}>

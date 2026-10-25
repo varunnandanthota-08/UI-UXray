@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { useFacilitatorAuth } from '../../context/FacilitatorAuthContext';
 import authService from '../../services/authService';
 import Button from '../../components/ui/Button';
 import { 
@@ -33,8 +31,6 @@ export const Signup = () => {
   const [errors, setErrors] = useState({});
   const [generalError, setGeneralError] = useState(null);
 
-  const { login: studentLogin } = useAuth();
-  const { login: facilitatorLogin } = useFacilitatorAuth();
   const navigate = useNavigate();
 
   // Frontend validation
@@ -84,22 +80,16 @@ export const Signup = () => {
 
     setIsLoading(true);
     try {
-      // Register through auth service
-      const newUser = await authService.signup({
+      // Register through real backend auth service (POST /api/auth/register)
+      await authService.signup({
         name,
         email,
         password,
         role
       });
 
-      // Automatically sign in the new account and redirect to role dashboard
-      if (role === 'student') {
-        await studentLogin(newUser.email, password, newUser);
-        navigate('/student/dashboard');
-      } else {
-        await facilitatorLogin(newUser.email, password, newUser);
-        navigate('/facilitator/dashboard');
-      }
+      // Backend registration does not return a token; redirect to login with success flag
+      navigate(`/login?role=${role}&registered=true`);
     } catch (err) {
       setGeneralError(err.message || 'Registration failed. Please check your information.');
     } finally {

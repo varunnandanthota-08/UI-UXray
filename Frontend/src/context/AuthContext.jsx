@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import studentApi from '../api/studentApi';
+import authService from '../services/authService';
 
 const AuthContext = createContext(null);
 
@@ -8,51 +9,65 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = localStorage.getItem('barabari_student_token');
     const activeStored = localStorage.getItem('barabari_active_student_user');
-    if (activeStored) {
+
+    if (token) {
+      // Validate with backend GET /api/auth/me
+      authService.getMe()
+        .then((beUser) => {
+          if (beUser && beUser.role === 'student') {
+            const formatted = {
+              id: beUser.id || beUser._id,
+              studentId: beUser.id || 'BC-2026-088',
+              name: beUser.name,
+              email: beUser.email,
+              cohort: 'Cohort 4 • UI/UX Product Design',
+              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+              role: 'Student'
+            };
+            setStudent(formatted);
+            localStorage.setItem('barabari_active_student_user', JSON.stringify(formatted));
+          } else if (activeStored) {
+            try {
+              setStudent(JSON.parse(activeStored));
+            } catch {
+              // fallback
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('[AuthContext] Session validation failed:', err);
+          if (err?.response?.status === 401) {
+            localStorage.removeItem('barabari_student_token');
+            localStorage.removeItem('barabari_active_student_user');
+            setStudent(null);
+          } else if (activeStored) {
+            try {
+              setStudent(JSON.parse(activeStored));
+            } catch {}
+          }
+        })
+        .finally(() => setLoading(false));
+    } else if (activeStored && !sessionStorage.getItem('barabari_logged_out')) {
       try {
         setStudent(JSON.parse(activeStored));
-        setLoading(false);
-        return;
-      } catch {
-        // fallback
-      }
-    }
-
-    // Check if token exists in localStorage
-    const token = localStorage.getItem('barabari_student_token');
-    if (token) {
-      studentApi.getStudentProfile()
-        .then((res) => {
-          if (res?.data) {
-            setStudent(res.data);
-          }
-        })
-        .catch((err) => console.error('Error fetching profile:', err))
-        .finally(() => setLoading(false));
-    } else if (!sessionStorage.getItem('barabari_logged_out')) {
-      // Default to demo student for frictionless initial exploration if not logged out
-      studentApi.getStudentProfile()
-        .then((res) => {
-          if (res?.data) {
-            setStudent(res.data);
-            localStorage.setItem('barabari_student_token', 'demo-token-ananya-2026');
-          }
-        })
-        .catch((err) => console.error('Profile error:', err))
-        .finally(() => setLoading(false));
+      } catch {}
+      setLoading(false);
     } else {
-      queueMicrotask(() => setLoading(false));
+      setLoading(false);
     }
   }, []);
 
-  const login = async (_email, _password, userObj = null) => {
+  const login = async (_email, _password, userObj = null, token = null) => {
     sessionStorage.removeItem('barabari_logged_out');
-    localStorage.setItem('barabari_student_token', 'demo-token-student');
+    if (token) {
+      localStorage.setItem('barabari_student_token', token);
+    }
     if (userObj) {
       const activeStudent = {
-        id: userObj.id || 'stu-001',
-        studentId: userObj.studentId || 'BC-2026-088',
+        id: userObj.id || userObj._id || 'stu-001',
+        studentId: userObj.studentId || userObj.id || 'BC-2026-088',
         name: userObj.name || 'Ananya Sharma',
         email: userObj.email || _email,
         cohort: 'Cohort 4 • UI/UX Product Design',

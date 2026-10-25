@@ -103,3 +103,13 @@ async function getMe(req, res) {
 }
 
 module.exports = { register, login, getMe }
+
+
+/*
+
+8u qybe e 
+ie8 hah e a000au e
+ba auue wo u u  apj si all aiii asjsaoiellw
+apjieeeu auidn aondudjnaj  aiuns akaona 
+
+*/

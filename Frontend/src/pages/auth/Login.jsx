@@ -82,14 +82,14 @@ export const Login = () => {
     setIsLoading(true);
     try {
       // Authenticate via unified auth service
-      const authenticatedUser = await authService.login({ email, password, role });
+      const { user, token } = await authService.login({ email, password, role });
 
       // Synchronize role session and execute role-based redirection
       if (role === 'student') {
-        await studentLogin(email, password, authenticatedUser);
+        await studentLogin(email, password, user, token);
         navigate('/student/dashboard');
       } else {
-        await facilitatorLogin(email, password, authenticatedUser);
+        await facilitatorLogin(email, password, user, token);
         navigate('/facilitator/dashboard');
       }
     } catch (err) {
@@ -210,6 +210,14 @@ export const Login = () => {
               Autofill
             </button>
           </div>
+
+          {/* Registration Success Banner */}
+          {searchParams.get('registered') === 'true' && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-800 animate-in fade-in">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span className="leading-relaxed font-medium">Account registered successfully! Please enter your password to sign in.</span>
+            </div>
+          )}
 
           {/* General Error Banner */}
           {generalError && (
