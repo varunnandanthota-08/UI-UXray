@@ -19,7 +19,7 @@
 
 const { GoogleGenAI, Type } = require('@google/genai')
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DEFAULT_MODEL = 'gemini-3.5-flash'
 const DEFAULT_TIMEOUT_MS = 25000
 const MAX_SAMPLED_NODES = 40
 const MAX_TEXT_LENGTH = 1200
