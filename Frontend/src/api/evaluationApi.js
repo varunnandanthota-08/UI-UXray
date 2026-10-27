@@ -11,8 +11,11 @@ import { facilitatorApi } from './facilitatorApi';
 export const evaluationApi = {
   getEvaluations: (params) => facilitatorApi.getEvaluations(params),
   getEvaluation: (id) => facilitatorApi.getEvaluation(id),
-  saveEvaluationDraft: (submissionId, draftData) => facilitatorApi.saveEvaluationDraft(submissionId, draftData),
-  finalizeEvaluation: (submissionId, evaluationData) => facilitatorApi.finalizeEvaluation(submissionId, evaluationData),
+  getSubmissionEvaluation: (submissionId) => facilitatorApi.getSubmissionEvaluation(submissionId),
+  generateAiDraft: (submissionId) => facilitatorApi.generateAiDraft(submissionId),
+  saveEvaluationDraft: (submissionId, draftData, criteria, maxScore) => facilitatorApi.saveEvaluationDraft(submissionId, draftData, criteria, maxScore),
+  finalizeEvaluation: (submissionId, evaluationData, criteria, maxScore) => facilitatorApi.finalizeEvaluation(submissionId, evaluationData, criteria, maxScore),
+  updateEvaluation: (id, updates) => facilitatorApi.updateEvaluation(id, updates),
   getReEvaluationRequests: () => facilitatorApi.getReEvaluationRequests(),
   approveReEvaluation: (evaluationId, notes) => facilitatorApi.approveReEvaluation(evaluationId, notes),
   rejectReEvaluation: (evaluationId, reason) => facilitatorApi.rejectReEvaluation(evaluationId, reason),

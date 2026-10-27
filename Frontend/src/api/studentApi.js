@@ -6,17 +6,34 @@
 
 import apiClient from './apiClient';
 import mockStudentService from '../services/mockStudentApi';
+import {
+  fromBackendAssignment,
+  toBackendSubmission,
+  fromBackendSubmission,
+  fromBackendRubric,
+  fromBackendEvaluation
+} from './facilitatorApi';
 
-// Helper to execute request with graceful fallback to mock data
+// Helper to execute request with graceful fallback to mock data for offline/dev mode
 async function withFallback(apiCall, mockCall) {
   try {
-    const response = await apiCall();
-    if (response && response.data) {
-      return response.data;
+    const result = await apiCall();
+    if (result !== undefined) {
+      if (result && typeof result === 'object' && 'data' in result && !result.config) {
+        return result;
+      }
+      return { success: true, data: result };
     }
-  } catch {
-    // In hackathon / dev mode, if BE-1 is offline, connection refused, or endpoint not yet registered, gracefully fall back to mock service
-    return await mockCall();
+  } catch (error) {
+    const isNetworkOrOffline = !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED';
+    const isPendingBackend = error.response?.status === 404 || error.response?.status === 501;
+
+    if (isNetworkOrOffline || isPendingBackend) {
+      return await mockCall();
+    }
+
+    console.warn('[Student API] Backend error:', error.response?.status, error.message);
+    throw error;
   }
   return await mockCall();
 }
@@ -24,91 +41,168 @@ async function withFallback(apiCall, mockCall) {
 export const studentApi = {
   getStudentProfile: async () => {
     return withFallback(
-      () => apiClient.get('/student/profile'),
+      () => apiClient.get('/auth/me'),
       () => mockStudentService.getStudentProfile()
     );
   },
 
+  // Course/Unit APIs are not in current backend; keeping on mock layer as required
   getCourses: async () => {
     return withFallback(
-      () => apiClient.get('/student/courses'),
+      () => apiClient.get('/courses'),
       () => mockStudentService.getCourses()
     );
   },
 
   getCourse: async (courseId) => {
     return withFallback(
-      () => apiClient.get(`/student/courses/${courseId}`),
+      () => apiClient.get(`/courses/${courseId}`),
       () => mockStudentService.getCourse(courseId)
     );
   },
 
   getUnit: async (unitId) => {
     return withFallback(
-      () => apiClient.get(`/student/units/${unitId}`),
+      () => apiClient.get(`/units/${unitId}`),
       () => mockStudentService.getUnit(unitId)
+    );
+  },
+
+  // Real Backend Assignments: GET /api/assignments, GET /api/assignments/:id
+  getStudentAssignments: async () => {
+    return withFallback(
+      async () => {
+        const res = await apiClient.get('/assignments', { role: 'student' });
+        const list = Array.isArray(res.data) ? res.data : [];
+        return { success: true, data: list.map(fromBackendAssignment) };
+      },
+      () => mockStudentService.getStudentAssignments()
     );
   },
 
   getAssignment: async (assignmentId) => {
     return withFallback(
-      () => apiClient.get(`/assignments/${assignmentId}`),
+      async () => {
+        const res = await apiClient.get(`/assignments/${assignmentId}`, { role: 'student' });
+        return { success: true, data: fromBackendAssignment(res.data) };
+      },
       () => mockStudentService.getAssignment(assignmentId)
     );
   },
 
+  // Real Backend Rubric: GET /api/assignments/:assignmentId/rubric
   getAssignmentRubric: async (assignmentId) => {
     return withFallback(
-      () => apiClient.get(`/assignments/${assignmentId}/rubric`),
+      async () => {
+        const res = await apiClient.get(`/assignments/${assignmentId}/rubric`, { role: 'student' });
+        return { success: true, data: fromBackendRubric(res.data) };
+      },
       () => mockStudentService.getAssignmentRubric(assignmentId)
     );
   },
 
-  getStudentAssignments: async () => {
-    return withFallback(
-      () => apiClient.get('/student/assignments'),
-      () => mockStudentService.getStudentAssignments()
-    );
-  },
-
+  // Real Backend Submissions: POST /api/assignments/:assignmentId/submissions
   submitAssignment: async (payload) => {
     return withFallback(
-      () => apiClient.post('/submissions', payload),
+      async () => {
+        const assignmentId = payload.assignmentId;
+        const bePayload = toBackendSubmission(payload);
+        const res = await apiClient.post(`/assignments/${assignmentId}/submissions`, bePayload, { role: 'student' });
+        return {
+          success: true,
+          data: fromBackendSubmission(res.data),
+          message: 'Assignment submitted successfully.'
+        };
+      },
       () => mockStudentService.submitAssignment(payload)
     );
   },
 
+  // Real Backend My Submission: GET /api/assignments/:assignmentId/my-submission
+  getMySubmission: async (assignmentId) => {
+    try {
+      const res = await apiClient.get(`/assignments/${assignmentId}/my-submission`, { role: 'student' });
+      return { success: true, data: fromBackendSubmission(res.data) };
+    } catch (err) {
+      if (err.response?.status === 404) {
+        return { success: true, data: null };
+      }
+      const isNetwork = !err.response || err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED';
+      if (isNetwork) {
+        return { success: true, data: null };
+      }
+      throw err;
+    }
+  },
+
+  // Real Backend Student History: GET /api/submissions/student/mine
+  getStudentSubmissions: async () => {
+    return withFallback(
+      async () => {
+        const res = await apiClient.get('/submissions/student/mine', { role: 'student' });
+        const list = Array.isArray(res.data) ? res.data : [];
+        return { success: true, data: list.map(fromBackendSubmission) };
+      },
+      () => mockStudentService.getStudentSubmissions()
+    );
+  },
+
+  // Real Backend Submission Detail: GET /api/submissions/:id
   getSubmission: async (submissionId) => {
     return withFallback(
-      () => apiClient.get(`/submissions/${submissionId}`),
+      async () => {
+        const res = await apiClient.get(`/submissions/${submissionId}`, { role: 'student' });
+        return { success: true, data: fromBackendSubmission(res.data) };
+      },
       () => mockStudentService.getSubmission(submissionId)
     );
   },
 
-  getStudentSubmissions: async () => {
+  // Real Backend Submission Update: PUT /api/submissions/:id
+  updateSubmission: async (submissionId, payload) => {
     return withFallback(
-      () => apiClient.get('/student/submissions'),
-      () => mockStudentService.getStudentSubmissions()
+      async () => {
+        const bePayload = toBackendSubmission(payload);
+        const res = await apiClient.put(`/submissions/${submissionId}`, bePayload, { role: 'student' });
+        return { success: true, data: fromBackendSubmission(res.data) };
+      },
+      () => mockStudentService.getSubmission(submissionId)
     );
   },
 
   getEvaluation: async (evaluationId) => {
     return withFallback(
-      () => apiClient.get(`/evaluations/${evaluationId}`),
+      async () => {
+        const res = await apiClient.get(`/evaluations/${evaluationId}`, { role: 'student' });
+        return { success: true, data: fromBackendEvaluation(res.data, { forStudent: true }) };
+      },
       () => mockStudentService.getEvaluation(evaluationId)
     );
   },
 
   requestReEvaluation: async (payload) => {
     return withFallback(
-      () => apiClient.post('/re-evaluations', payload),
+      async () => {
+        const res = await apiClient.post('/re-evaluations', payload, { role: 'student' });
+        return { success: true, data: res.data };
+      },
       () => mockStudentService.requestReEvaluation(payload)
     );
   },
 
   getReEvaluation: async (evaluationId) => {
     return withFallback(
-      () => apiClient.get(`/re-evaluations/${evaluationId}`),
+      async () => {
+        try {
+          const res = await apiClient.get(`/re-evaluations/${evaluationId}`, { role: 'student' });
+          return { success: true, data: res.data };
+        } catch (err) {
+          if (err.response && err.response.status === 404) {
+            return { success: true, data: null };
+          }
+          throw err;
+        }
+      },
       () => mockStudentService.getReEvaluation(evaluationId)
     );
   },
