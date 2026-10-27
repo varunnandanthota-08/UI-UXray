@@ -270,12 +270,16 @@ async function generateAiDraft(req, res) {
     }
 
     // 2. Prepare evaluation draft with bounded evidence and rubric criteria
-    const draftData = prepareEvaluationDraft({
+    const draftData = await prepareEvaluationDraft({
       criteria,
       submission: sub,
       assignmentTotalMarks: context.assignment.totalMarks || 100,
       inspectionResult,
     })
+
+    if (draftData.error) {
+      return fail(res, draftData.statusCode || 502, draftData.error)
+    }
 
     // 3. Persist evaluation draft to MongoDB
     let evaluation = await Evaluation.findOne({ submissionId: context.submission._id })
