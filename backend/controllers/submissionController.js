@@ -8,6 +8,7 @@ const {
   normalizeString,
   ok,
 } = require('./controllerUtils')
+const { validateFigmaUrl, isCanvaUrl, CANVA_GUIDANCE_MESSAGE } = require('../services/designUrlValidator')
 
 const evidenceFields = [
   'figmaUrl',
@@ -29,8 +30,26 @@ function submissionPayload(body) {
 }
 
 function validateUrls(payload) {
-  for (const field of ['figmaUrl', 'figjamUrl', 'canvaUrl', 'prototypeUrl']) {
-    if (payload[field] && !isHttpUrl(payload[field])) return `${field} must be a valid HTTP or HTTPS URL`
+  if (payload.figmaUrl) {
+    const figmaVal = validateFigmaUrl(payload.figmaUrl)
+    if (!figmaVal.isValid) return `figmaUrl: ${figmaVal.error}`
+  }
+  if (payload.figjamUrl) {
+    const figjamVal = validateFigmaUrl(payload.figjamUrl)
+    if (!figjamVal.isValid) return `figjamUrl: ${figjamVal.error}`
+  }
+  if (payload.canvaUrl) {
+    if (!isCanvaUrl(payload.canvaUrl) && !isHttpUrl(payload.canvaUrl)) {
+      return 'canvaUrl must be a valid Canva link or URL'
+    }
+  }
+  if (payload.prototypeUrl) {
+    if (isCanvaUrl(payload.prototypeUrl)) {
+      return `prototypeUrl: ${CANVA_GUIDANCE_MESSAGE}`
+    }
+    if (!isHttpUrl(payload.prototypeUrl)) {
+      return 'prototypeUrl must be a valid HTTP or HTTPS URL'
+    }
   }
   return null
 }

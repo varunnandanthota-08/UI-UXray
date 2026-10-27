@@ -54,7 +54,6 @@ export const ReEvaluation = () => {
       };
       const res = await studentApi.requestReEvaluation(payload);
       setExistingRequest(res.data);
-      setSubmittedSuccess(true);
     } catch (err) {
       console.error('Error submitting re-evaluation:', err);
     } finally {

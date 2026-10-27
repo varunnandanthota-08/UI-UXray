@@ -17,6 +17,10 @@ const reevaluationRequestSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    assignmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Assignment',
+    },
     reason: {
       type: String,
       required: true,
@@ -47,5 +51,8 @@ const reevaluationRequestSchema = new mongoose.Schema(
 )
 
 reevaluationRequestSchema.index({ submissionId: 1 })
+reevaluationRequestSchema.index({ evaluationId: 1 })
+reevaluationRequestSchema.index({ studentId: 1 })
+reevaluationRequestSchema.index({ assignmentId: 1, status: 1 })
 
 module.exports = mongoose.model('ReevaluationRequest', reevaluationRequestSchema)

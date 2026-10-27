@@ -4,6 +4,7 @@ const roleMiddleware = require('../middleware/roleMiddleware')
 const {
   createEvaluation,
   generateAiDraft,
+  getEvaluation,
   getSubmissionEvaluation,
   updateEvaluation,
 } = require('../controllers/evaluationController')
@@ -14,6 +15,7 @@ router.use(authMiddleware)
 router.post('/submissions/:submissionId/ai-draft', roleMiddleware('facilitator'), generateAiDraft)
 router.post('/submissions/:submissionId/evaluation', roleMiddleware('facilitator'), createEvaluation)
 router.get('/submissions/:submissionId/evaluation', getSubmissionEvaluation)
+router.get('/evaluations/:id', getEvaluation)
 router.put('/evaluations/:id', roleMiddleware('facilitator'), updateEvaluation)
 
 module.exports = router

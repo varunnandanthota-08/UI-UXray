@@ -9,6 +9,10 @@ const {
   normalizeString,
   ok,
 } = require('./controllerUtils')
+const { validateFigmaUrl, isCanvaUrl, CANVA_GUIDANCE_MESSAGE } = require('../services/designUrlValidator')
+const { calculateRubricScore } = require('../services/rubricScorer')
+const figmaInspector = require('../services/figmaInspector')
+const { prepareEvaluationDraft } = require('../services/evaluationPreparer')
 
 const evaluationStatuses = ['draft', 'ai_review_complete', 'facilitator_review', 'approved']
 const automatedStatuses = ['PASS', 'PARTIAL', 'MISSING', 'INSUFFICIENT_EVIDENCE']
@@ -28,6 +32,8 @@ function evaluationPayload(body) {
     'finalMarks',
     'facilitatorComments',
     'status',
+    'inspectionMetadata',
+    'evidenceSummary',
   ]
 
   for (const field of fields) {
@@ -150,8 +156,75 @@ async function getSubmissionEvaluation(req, res) {
     }
 
     const evaluation = await Evaluation.findOne({ submissionId: context.submission._id })
+      .populate('assignmentId', 'title totalMarks')
+      .populate('studentId', 'name email')
     if (!evaluation) return fail(res, 404, 'Evaluation not found')
     return ok(res, 200, evaluation)
+  } catch (error) {
+    return handleControllerError(res, error)
+  }
+}
+
+async function getEvaluation(req, res) {
+  try {
+    const { id } = req.params
+    if (!isValidObjectId(id)) {
+      return fail(res, 400, 'Invalid evaluation ID')
+    }
+
+    let evaluation = await Evaluation.findById(id)
+      .populate('assignmentId', 'title totalMarks')
+      .populate('studentId', 'name email')
+
+    if (!evaluation) {
+      evaluation = await Evaluation.findOne({ submissionId: id })
+        .populate('assignmentId', 'title totalMarks')
+        .populate('studentId', 'name email')
+    }
+
+    if (!evaluation) {
+      return fail(res, 404, 'Evaluation not found')
+    }
+
+    const submission = await Submission.findById(evaluation.submissionId)
+    if (!submission) {
+      return fail(res, 404, 'Submission not found')
+    }
+
+    const assignment = await Assignment.findById(submission.assignmentId)
+    if (!assignment) {
+      return fail(res, 404, 'Assignment not found')
+    }
+
+    if (req.user.role === 'student' && submission.studentId.toString() !== req.user.userId) {
+      return fail(res, 403, 'You do not own this submission')
+    }
+
+    if (req.user.role === 'facilitator' && assignment.createdBy.toString() !== req.user.userId) {
+      return fail(res, 403, 'You do not own this assignment')
+    }
+
+    if (req.user.role !== 'student' && req.user.role !== 'facilitator') {
+      return fail(res, 403, 'You do not have permission to view this evaluation')
+    }
+
+    const evalObj = evaluation.toObject ? evaluation.toObject() : { ...evaluation }
+    if (!evalObj.assignmentId || typeof evalObj.assignmentId !== 'object') {
+      evalObj.assignmentId = assignment
+    }
+
+    if (req.user.role === 'student') {
+      delete evalObj.aiSuggestedMarks
+      delete evalObj.aiFeedback
+      delete evalObj.inspectionMetadata
+      delete evalObj.evidenceSummary
+      if (evalObj.status !== 'approved') {
+        delete evalObj.finalMarks
+        delete evalObj.facilitatorMarks
+      }
+    }
+
+    return ok(res, 200, evalObj)
   } catch (error) {
     return handleControllerError(res, error)
   }
@@ -186,88 +259,32 @@ async function generateAiDraft(req, res) {
 
     const rubric = await Rubric.findOne({ assignmentId: context.assignment._id })
     const criteria = rubric?.criteria || []
-
     const sub = context.submission
-    const hasFigma = Boolean(sub.figmaUrl)
-    const hasPrototype = Boolean(sub.prototypeUrl)
-    const hasPersona = Boolean(sub.persona)
-    const hasUserFlow = Boolean(sub.userFlow)
-    const hasResearch = Boolean(sub.researchNotes)
 
-    const totalPossible = context.assignment.totalMarks || 100
-    let criteriaResults = []
-    let totalAwarded = 0
+    // 1. Inspect Figma design if valid Figma URL is supplied (via figmaInspector)
+    let inspectionResult = null
+    const figmaValidation = validateFigmaUrl(sub.figmaUrl, { optional: true })
 
-    if (criteria.length > 0) {
-      criteriaResults = criteria.map((c) => {
-        const maxMarks = c.maxMarks || 25
-        let awarded = Math.round(maxMarks * 0.85)
-        let status = 'PASS'
-        let notes = 'Satisfies core expectations.'
-
-        const cNameLower = (c.name || '').toLowerCase()
-        if (cNameLower.includes('figma') || cNameLower.includes('prototype') || cNameLower.includes('ui/ux') || cNameLower.includes('visual')) {
-          if (hasFigma || hasPrototype) {
-            awarded = Math.round(maxMarks * 0.92)
-            status = 'PASS'
-            notes = 'High fidelity interactive prototype and Figma structure verified.'
-          } else {
-            awarded = Math.round(maxMarks * 0.4)
-            status = 'PARTIAL'
-            notes = 'Missing direct Figma URL.'
-          }
-        } else if (cNameLower.includes('research') || cNameLower.includes('persona') || cNameLower.includes('journey') || cNameLower.includes('flow')) {
-          if (hasPersona || hasResearch || hasUserFlow) {
-            awarded = Math.round(maxMarks * 0.9)
-            status = 'PASS'
-            notes = 'Comprehensive user persona and journey mapping artifacts supplied.'
-          } else {
-            awarded = Math.round(maxMarks * 0.5)
-            status = 'PARTIAL'
-            notes = 'Limited user research notes submitted.'
-          }
-        }
-
-        totalAwarded += awarded
-        return {
-          criterionId: c._id,
-          criterionName: c.name,
-          maxMarks,
-          awardedMarks: awarded,
-          automatedStatus: status,
-          automatedNotes: notes,
-        }
-      })
-    } else {
-      totalAwarded = Math.round(totalPossible * 0.85)
+    if (figmaValidation.isValid && figmaValidation.fileKey) {
+      inspectionResult = await figmaInspector.inspectFigmaDesign(sub.figmaUrl)
     }
 
-    const aiFeedback = {
-      strengths: [
-        hasFigma ? 'Clear interactive workflow with proper Figma layout hierarchy' : 'Solid deliverable structure',
-        hasUserFlow ? 'Thorough mapping of user decision paths and interaction branches' : 'Adherence to core assignment guidelines',
-        'Strong visual hierarchy and consistent spacing',
-      ],
-      missingRequirements: [
-        'Further explore edge cases and accessibility contrast ratios (WCAG AAA)',
-      ],
-      improvements: [
-        'Include annotated states for hover, error, and empty views in primary wireframes',
-      ],
-      criterionObservations: criteriaResults.map((cr) => ({
-        criterionName: cr.criterionName,
-        status: cr.automatedStatus,
-        observations: [cr.automatedNotes],
-        missing: [],
-        suggestions: ['Enhance edge-case coverage in next revision'],
-      })),
-    }
+    // 2. Prepare evaluation draft with bounded evidence and rubric criteria
+    const draftData = prepareEvaluationDraft({
+      criteria,
+      submission: sub,
+      assignmentTotalMarks: context.assignment.totalMarks || 100,
+      inspectionResult,
+    })
 
+    // 3. Persist evaluation draft to MongoDB
     let evaluation = await Evaluation.findOne({ submissionId: context.submission._id })
     if (evaluation) {
-      evaluation.criteriaResults = criteriaResults
-      evaluation.aiFeedback = aiFeedback
-      evaluation.aiSuggestedMarks = totalAwarded
+      evaluation.criteriaResults = draftData.criteriaResults
+      evaluation.aiFeedback = draftData.aiFeedback
+      evaluation.aiSuggestedMarks = draftData.aiSuggestedMarks
+      evaluation.inspectionMetadata = draftData.inspectionMetadata
+      evaluation.evidenceSummary = draftData.evidenceSummary
       evaluation.status = 'ai_review_complete'
       await evaluation.save()
     } else {
@@ -275,9 +292,11 @@ async function generateAiDraft(req, res) {
         submissionId: context.submission._id,
         assignmentId: context.assignment._id,
         studentId: context.submission.studentId,
-        criteriaResults,
-        aiFeedback,
-        aiSuggestedMarks: totalAwarded,
+        criteriaResults: draftData.criteriaResults,
+        aiFeedback: draftData.aiFeedback,
+        aiSuggestedMarks: draftData.aiSuggestedMarks,
+        inspectionMetadata: draftData.inspectionMetadata,
+        evidenceSummary: draftData.evidenceSummary,
         status: 'ai_review_complete',
       })
     }
@@ -291,6 +310,7 @@ async function generateAiDraft(req, res) {
 module.exports = {
   createEvaluation,
   generateAiDraft,
+  getEvaluation,
   getSubmissionEvaluation,
   updateEvaluation,
 }

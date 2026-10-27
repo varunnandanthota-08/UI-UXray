@@ -142,23 +142,3 @@ module.exports = {
 }
 
 
-/*
-
-int i=0;
-for(int i=0;i<n;i++){
-  i==;
-  i==
-  mmmm;
-  m mm;
-  oop;
-  ll k;
-  pmp;
-
-  ;lllp
-  ppp;
-  p;
-  pppp, mko  inmmkp;
-   oo 0 ii inmor  akjj r ajjr ia oii 
-}
-
-*/

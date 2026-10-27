@@ -9,6 +9,10 @@ const criterionResultSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    description: {
+      type: String,
+      trim: true,
+    },
     maxMarks: {
       type: Number,
       min: 0,
@@ -16,6 +20,14 @@ const criterionResultSchema = new mongoose.Schema(
     awardedMarks: {
       type: Number,
       min: 0,
+    },
+    weightage: {
+      type: Number,
+      min: 0,
+    },
+    checks: {
+      type: [String],
+      default: [],
     },
     automatedStatus: {
       type: String,
@@ -81,6 +93,38 @@ const aiFeedbackSchema = new mongoose.Schema(
   { _id: false },
 )
 
+const evaluationVersionSchema = new mongoose.Schema(
+  {
+    versionNumber: {
+      type: Number,
+      required: true,
+    },
+    finalMarks: {
+      type: Number,
+    },
+    criteriaResults: {
+      type: [criterionResultSchema],
+      default: [],
+    },
+    facilitatorComments: {
+      type: String,
+      trim: true,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    reviewedAt: {
+      type: Date,
+    },
+    resolutionNotes: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false, timestamps: true },
+)
+
 const evaluationSchema = new mongoose.Schema(
   {
     submissionId: {
@@ -130,6 +174,78 @@ const evaluationSchema = new mongoose.Schema(
     },
     reviewedAt: {
       type: Date,
+    },
+    inspectionMetadata: {
+      provider: {
+        type: String,
+        trim: true,
+      },
+      status: {
+        type: String,
+        enum: ['success', 'failed', 'not_applicable'],
+      },
+      fileKey: {
+        type: String,
+        trim: true,
+      },
+      documentName: {
+        type: String,
+        trim: true,
+      },
+      lastModified: {
+        type: String,
+        trim: true,
+      },
+      version: {
+        type: String,
+        trim: true,
+      },
+      error: {
+        type: String,
+        trim: true,
+      },
+      inspectedAt: {
+        type: Date,
+      },
+    },
+    evidenceSummary: {
+      totalNodesScanned: {
+        type: Number,
+      },
+      nodesRetained: {
+        type: Number,
+      },
+      totalFramesCount: {
+        type: Number,
+      },
+      totalTextNodesCount: {
+        type: Number,
+      },
+      totalComponentsCount: {
+        type: Number,
+      },
+      uniqueColorCount: {
+        type: Number,
+      },
+      colors: {
+        type: [String],
+        default: [],
+      },
+      typography: {
+        type: [mongoose.Schema.Types.Mixed],
+        default: [],
+      },
+      maxDepthReached: {
+        type: Number,
+      },
+      truncated: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    versions: {
+      type: [evaluationVersionSchema],
+      default: [],
     },
   },
   { timestamps: true },

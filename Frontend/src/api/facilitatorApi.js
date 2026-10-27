@@ -376,8 +376,9 @@ export function mapBackendEvaluationStatus(status) {
   }
 }
 
-export function fromBackendEvaluation(e, { forStudent = false } = {}) {
-  if (!e) return null;
+export function fromBackendEvaluation(raw, { forStudent = false } = {}) {
+  if (!raw) return null;
+  const e = raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && (raw.data._id || raw.data.id || raw.data.criteriaResults || raw.data.status) ? raw.data : raw;
   const id = e._id || e.id;
   const submissionId = e.submissionId?._id || e.submissionId;
   const assignmentId = e.assignmentId?._id || e.assignmentId;
@@ -1110,36 +1111,44 @@ export const facilitatorApi = {
 
   // Re-evaluation routes are not implemented on the backend; preserving mock fallback as required
   getReEvaluationRequests: async () => {
-    console.info('[Re-Evaluation] Backend route not implemented in backend. Keeping mock fallback.');
     return withFacilitatorFallback(
-      () => apiClient.get('/re-evaluations'),
+      async () => {
+        const res = await apiClient.get('/re-evaluations', { role: 'facilitator' });
+        return res.data;
+      },
       () => mockGetReEvaluationRequests(),
       'Get Re-Evaluation Requests'
     );
   },
 
   approveReEvaluation: async (evaluationId, facilitatorNotes = '') => {
-    console.info('[Re-Evaluation] Backend route not implemented in backend. Keeping mock fallback.');
     return withFacilitatorFallback(
-      () => apiClient.post(`/re-evaluations/${evaluationId}/approve`, { facilitatorNotes }),
+      async () => {
+        const res = await apiClient.post(`/re-evaluations/${evaluationId}/approve`, { facilitatorNotes }, { role: 'facilitator' });
+        return res.data;
+      },
       () => mockApproveReEvaluation(evaluationId, facilitatorNotes),
       'Approve Re-Evaluation'
     );
   },
 
   rejectReEvaluation: async (evaluationId, declineReason) => {
-    console.info('[Re-Evaluation] Backend route not implemented in backend. Keeping mock fallback.');
     return withFacilitatorFallback(
-      () => apiClient.post(`/re-evaluations/${evaluationId}/reject`, { declineReason }),
+      async () => {
+        const res = await apiClient.post(`/re-evaluations/${evaluationId}/reject`, { declineReason }, { role: 'facilitator' });
+        return res.data;
+      },
       () => mockRejectReEvaluation(evaluationId, declineReason),
       'Reject Re-Evaluation'
     );
   },
 
   finalizeReEvaluation: async (evaluationId, resolutionData) => {
-    console.info('[Re-Evaluation] Backend route not implemented in backend. Keeping mock fallback.');
     return withFacilitatorFallback(
-      () => apiClient.post(`/re-evaluations/${evaluationId}/finalize`, resolutionData),
+      async () => {
+        const res = await apiClient.post(`/re-evaluations/${evaluationId}/finalize`, resolutionData, { role: 'facilitator' });
+        return res.data;
+      },
       () => mockFinalizeReEvaluation(evaluationId, resolutionData),
       'Finalize Re-Evaluation'
     );

@@ -172,21 +172,37 @@ export const studentApi = {
 
   getEvaluation: async (evaluationId) => {
     return withFallback(
-      () => apiClient.get(`/evaluations/${evaluationId}`),
+      async () => {
+        const res = await apiClient.get(`/evaluations/${evaluationId}`, { role: 'student' });
+        return { success: true, data: fromBackendEvaluation(res.data, { forStudent: true }) };
+      },
       () => mockStudentService.getEvaluation(evaluationId)
     );
   },
 
   requestReEvaluation: async (payload) => {
     return withFallback(
-      () => apiClient.post('/re-evaluations', payload),
+      async () => {
+        const res = await apiClient.post('/re-evaluations', payload, { role: 'student' });
+        return { success: true, data: res.data };
+      },
       () => mockStudentService.requestReEvaluation(payload)
     );
   },
 
   getReEvaluation: async (evaluationId) => {
     return withFallback(
-      () => apiClient.get(`/re-evaluations/${evaluationId}`),
+      async () => {
+        try {
+          const res = await apiClient.get(`/re-evaluations/${evaluationId}`, { role: 'student' });
+          return { success: true, data: res.data };
+        } catch (err) {
+          if (err.response && err.response.status === 404) {
+            return { success: true, data: null };
+          }
+          throw err;
+        }
+      },
       () => mockStudentService.getReEvaluation(evaluationId)
     );
   },
