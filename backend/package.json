@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "node --test tests/designUrlValidator.test.js tests/rubricScorer.test.js tests/evaluationDraft.test.js tests/figmaInspector.test.js tests/evaluationPreparer.test.js tests/geminiEvaluator.test.js tests/authRouteProtection.test.js tests/studentApiContract.test.js tests/evaluationDetailsContract.test.js tests/submissionLifecycle.test.js"
+    "test": "node --test tests/designUrlValidator.test.js tests/rubricScorer.test.js tests/evaluationDraft.test.js tests/figmaInspector.test.js tests/evaluationPreparer.test.js tests/geminiEvaluator.test.js tests/authRouteProtection.test.js tests/studentApiContract.test.js tests/evaluationDetailsContract.test.js tests/submissionLifecycle.test.js tests/facilitatorApiContract.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",

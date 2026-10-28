@@ -186,10 +186,10 @@ export const RubricInspectModal = ({
 
                     <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                       <Badge variant="blue" className="font-bold text-[10px]">
-                        Weight: {criterion.weight || `${Math.round((criterion.marks / (rubric.totalMarks || 1)) * 100)}%`}
+                        Weight: {criterion.weight || (criterion.weightage !== undefined ? `${criterion.weightage}%` : `${Math.round(((criterion.marks ?? criterion.maxMarks ?? 5) / (rubric.totalMarks || 1)) * 100)}%`)}
                       </Badge>
                       <span className="text-xs font-bold text-brand-blue bg-white border border-brand-border px-2.5 py-1 rounded-lg">
-                        {criterion.marks} marks max
+                        {criterion.marks ?? criterion.maxMarks ?? 5} marks max
                       </span>
                     </div>
                   </div>

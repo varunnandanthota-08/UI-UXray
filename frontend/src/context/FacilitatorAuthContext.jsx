@@ -9,14 +9,14 @@ export const FacilitatorAuthProvider = ({ children }) => {
   const [facilitator, setFacilitator] = useState(() => {
     const token = localStorage.getItem('barabari_facilitator_token');
     const storedUser = localStorage.getItem('barabari_facilitator_user');
+    const loggedOut = sessionStorage.getItem('barabari_facilitator_logged_out');
+    if (loggedOut) return null;
     if (token && storedUser) {
       try {
         return JSON.parse(storedUser);
       } catch {
-        return mockFacilitatorUser;
+        return null;
       }
-    } else if (!sessionStorage.getItem('barabari_facilitator_logged_out')) {
-      return mockFacilitatorUser;
     }
     return null;
   });
@@ -33,40 +33,68 @@ export const FacilitatorAuthProvider = ({ children }) => {
   useEffect(() => {
     const token = localStorage.getItem('barabari_facilitator_token');
     const storedUser = localStorage.getItem('barabari_facilitator_user');
+    const loggedOut = sessionStorage.getItem('barabari_facilitator_logged_out');
 
-    if (token) {
-      authService.getMe('facilitator')
-        .then((beUser) => {
-          if (beUser && beUser.role === 'facilitator') {
-            const activeUser = {
-              ...mockFacilitatorUser,
-              id: beUser.id || beUser._id,
-              name: beUser.name,
-              email: beUser.email,
-              role: 'Lead Design Facilitator'
-            };
-            setFacilitator(activeUser);
-            localStorage.setItem('barabari_facilitator_user', JSON.stringify(activeUser));
-          } else if (storedUser) {
-            try {
-              setFacilitator(JSON.parse(storedUser));
-            } catch {}
-          }
-        })
-        .catch((err) => {
-          console.warn('[FacilitatorAuthContext] Session validation failed:', err);
-          if (err?.response?.status === 401) {
-            logout();
-          } else if (storedUser) {
-            try {
-              setFacilitator(JSON.parse(storedUser));
-            } catch {}
-          }
-        })
-        .finally(() => setLoading(false));
-    } else {
+    if (loggedOut || !token) {
+      setFacilitator(null);
       setLoading(false);
+      return;
     }
+
+    const isExplicitDemoToken = typeof token === 'string' && token.startsWith('demo-token-');
+
+    authService.getMe('facilitator')
+      .then((beUser) => {
+        if (beUser && beUser.role === 'facilitator') {
+          const activeUser = {
+            ...mockFacilitatorUser,
+            id: beUser.id || beUser._id,
+            name: beUser.name,
+            email: beUser.email,
+            role: 'Lead Design Facilitator'
+          };
+          setFacilitator(activeUser);
+          localStorage.setItem('barabari_facilitator_user', JSON.stringify(activeUser));
+        } else if (isExplicitDemoToken && storedUser) {
+          // Explicit demo mode session
+          try {
+            setFacilitator(JSON.parse(storedUser));
+          } catch {
+            logout();
+          }
+        } else if (!beUser && storedUser) {
+          // Backend is offline/unreachable (temporary outage): preserve valid session
+          try {
+            setFacilitator(JSON.parse(storedUser));
+          } catch {
+            logout();
+          }
+        } else {
+          // Active rejection or invalid role
+          logout();
+        }
+      })
+      .catch((err) => {
+        console.warn('[FacilitatorAuthContext] Session validation failed:', err);
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          // Expired or revoked credentials
+          logout();
+        } else {
+          // Temporary network error or backend outage
+          const isNetwork = !err?.response || err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED';
+          if (isNetwork && storedUser) {
+            try {
+              setFacilitator(JSON.parse(storedUser));
+            } catch {
+              logout();
+            }
+          } else {
+            logout();
+          }
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // Listen for session expiry event dispatched by apiClient interceptor
@@ -80,26 +108,49 @@ export const FacilitatorAuthProvider = ({ children }) => {
 
   const login = async (email, password, userObj = null, token = null) => {
     sessionStorage.removeItem('barabari_facilitator_logged_out');
-    if (token) {
-      localStorage.setItem('barabari_facilitator_token', token);
+
+    let activeToken = token;
+    let activeUser = userObj;
+
+    if (!activeToken || !activeUser) {
+      const authResult = await authService.login({
+        email,
+        password,
+        role: 'facilitator'
+      });
+      activeToken = authResult.token;
+      activeUser = authResult.user;
     }
-    if (userObj) {
-      const activeUser = {
-        ...mockFacilitatorUser,
-        id: userObj.id || userObj._id || mockFacilitatorUser.id,
-        name: userObj.name || mockFacilitatorUser.name,
-        email: userObj.email || email,
-        role: 'Lead Design Facilitator'
-      };
-      localStorage.setItem('barabari_facilitator_user', JSON.stringify(activeUser));
-      setFacilitator(activeUser);
-      return activeUser;
+
+    if (activeToken) {
+      localStorage.setItem('barabari_facilitator_token', activeToken);
     }
-    const result = await facilitatorApi.login(email, password);
-    const activeUser = result?.user || {
+
+    const formattedUser = {
       ...mockFacilitatorUser,
-      email: email || mockFacilitatorUser.email
+      id: activeUser?.id || activeUser?._id || mockFacilitatorUser.id,
+      name: activeUser?.name || mockFacilitatorUser.name,
+      email: activeUser?.email || email,
+      role: 'Lead Design Facilitator'
     };
+
+    localStorage.setItem('barabari_facilitator_user', JSON.stringify(formattedUser));
+    setFacilitator(formattedUser);
+    return formattedUser;
+  };
+
+  const loginDemo = () => {
+    sessionStorage.removeItem('barabari_facilitator_logged_out');
+    const demoToken = 'demo-token-facilitator';
+    const activeUser = {
+      ...mockFacilitatorUser,
+      id: 'usr-fac-001',
+      name: 'Rohan Mehta',
+      email: 'rohan.mehta@barabaricollective.in',
+      role: 'Lead Design Facilitator'
+    };
+    localStorage.setItem('barabari_facilitator_token', demoToken);
+    localStorage.setItem('barabari_facilitator_user', JSON.stringify(activeUser));
     setFacilitator(activeUser);
     return activeUser;
   };
@@ -115,7 +166,11 @@ export const FacilitatorAuthProvider = ({ children }) => {
     }
   };
 
-  const isAuthenticated = !!facilitator;
+  const isAuthenticated = Boolean(
+    facilitator &&
+    localStorage.getItem('barabari_facilitator_token') &&
+    !sessionStorage.getItem('barabari_facilitator_logged_out')
+  );
 
   return (
     <FacilitatorAuthContext.Provider
@@ -125,6 +180,7 @@ export const FacilitatorAuthProvider = ({ children }) => {
         isAuthenticated,
         loading,
         login,
+        loginDemo,
         logout,
         updateProfile
       }}

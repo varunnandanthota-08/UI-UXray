@@ -38,7 +38,22 @@ export const SubmissionReviewModal = ({
     if (!submission) return allRubrics[0] || null;
     return allRubrics.find(r => r.assignmentId === submission.assignmentId) || allRubrics[0] || null;
   }, [allRubrics, submission]);
-  const criteria = linkedRubric?.criteria || [];
+
+  const [asyncRubric, setAsyncRubric] = useState(null);
+
+  useEffect(() => {
+    if (!submission?.assignmentId) return;
+    let isMounted = true;
+    rubricApi.getRubric(submission.assignmentId)
+      .then((r) => {
+        if (isMounted && r) setAsyncRubric(r);
+      })
+      .catch(() => {});
+    return () => { isMounted = false; };
+  }, [submission?.assignmentId]);
+
+  const activeRubric = asyncRubric || linkedRubric;
+  const criteria = activeRubric?.criteria || [];
 
   // Evaluation Form State
   const [criterionScores, setCriterionScores] = useState({});
@@ -60,9 +75,24 @@ export const SubmissionReviewModal = ({
   useEffect(() => {
     if (submission) {
       const ev = submission.evaluation || {};
-      setCriterionScores(ev.criterionScores || {});
-      setCriterionFeedback(ev.criterionFeedback || {});
-      setGeneralFeedback(ev.generalFeedback || '');
+      let scores = ev.criterionScores || {};
+      let feedback = ev.criterionFeedback || {};
+
+      if (Object.keys(scores).length === 0 && Array.isArray(ev.criteriaBreakdown) && ev.criteriaBreakdown.length > 0) {
+        scores = {};
+        feedback = {};
+        ev.criteriaBreakdown.forEach((cb) => {
+          const key = cb.id || cb.name || cb.title;
+          if (key) {
+            scores[key] = cb.score;
+            feedback[key] = cb.feedback || '';
+          }
+        });
+      }
+
+      setCriterionScores(scores);
+      setCriterionFeedback(feedback);
+      setGeneralFeedback(ev.generalFeedback || ev.facilitatorComments || '');
       setStrengths(ev.strengths || '');
       setGrowthAreas(ev.growthAreas || '');
       setReturnReason(submission.returnReason || '');
@@ -139,7 +169,9 @@ export const SubmissionReviewModal = ({
       generalFeedback,
       strengths,
       growthAreas,
-      totalScore: calculatedTotalScore
+      totalScore: calculatedTotalScore,
+      maxScore: maxTotalScore,
+      criteria
     };
 
     try {
@@ -162,7 +194,9 @@ export const SubmissionReviewModal = ({
       generalFeedback,
       strengths,
       growthAreas,
-      totalScore: calculatedTotalScore
+      totalScore: calculatedTotalScore,
+      maxScore: maxTotalScore,
+      criteria
     };
 
     try {
@@ -502,9 +536,11 @@ export const SubmissionReviewModal = ({
 
                 <div className="space-y-4">
                   {criteria.map((criterion, idx) => {
-                    const currentScore = criterionScores[criterion.id] ?? '';
-                    const currentComment = criterionFeedback[criterion.id] ?? '';
+                    const currentScore = criterionScores[criterion.id] ?? criterionScores[criterion.name] ?? '';
+                    const currentComment = criterionFeedback[criterion.id] ?? criterionFeedback[criterion.name] ?? '';
                     const isExpanded = !!expandedDescriptors[criterion.id];
+                    const critMarks = Number(criterion.marks ?? criterion.maxMarks ?? 5);
+                    const critWeight = criterion.weight || (criterion.weightage !== undefined ? `${criterion.weightage}%` : `${Math.round((critMarks / maxTotalScore) * 100)}%`);
 
                     return (
                       <div 
@@ -522,7 +558,7 @@ export const SubmissionReviewModal = ({
                                 {criterion.name}
                               </h5>
                               <Badge variant="blue" className="text-[9px] font-bold">
-                                {criterion.weight || `${Math.round((criterion.marks / maxTotalScore) * 100)}%`}
+                                {critWeight}
                               </Badge>
                             </div>
                             <p className="text-[11px] text-brand-text-secondary pl-7 leading-snug">
@@ -539,16 +575,16 @@ export const SubmissionReviewModal = ({
                               <input
                                 type="number"
                                 min="0"
-                                max={criterion.marks}
+                                max={critMarks}
                                 step="1"
                                 disabled={isEvaluated}
                                 value={currentScore}
-                                onChange={(e) => handleScoreChange(criterion.id, e.target.value, criterion.marks)}
+                                onChange={(e) => handleScoreChange(criterion.id, e.target.value, critMarks)}
                                 placeholder="0"
                                 className="w-14 px-2 py-1.5 text-center font-bold text-xs rounded-xl border border-brand-border bg-white focus:outline-none focus:border-brand-blue disabled:bg-[#F0F0EB] transition-colors"
                               />
                               <span className="text-xs font-bold text-brand-text-secondary ml-1.5">
-                                / {criterion.marks}m
+                                / {critMarks}m
                               </span>
                             </div>
                           </div>

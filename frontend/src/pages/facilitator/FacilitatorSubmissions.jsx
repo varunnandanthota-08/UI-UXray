@@ -32,8 +32,13 @@ export const FacilitatorSubmissions = () => {
   const assignmentIdParam = searchParams.get('assignmentId') || 'ALL';
 
   // Submissions data
-  const [submissions, setSubmissions] = useState(getFacilitatorSubmissions);
-  const [assignments, setAssignments] = useState(getFacilitatorAssignments);
+  const [submissions, setSubmissions] = useState(() => {
+    return isDemoSession() ? getFacilitatorSubmissions() : [];
+  });
+  const [assignments, setAssignments] = useState(() => {
+    return isDemoSession() ? getFacilitatorAssignments() : [];
+  });
+  const [isLoading, setIsLoading] = useState(!isDemoSession());
   const [apiError, setApiError] = useState(null);
   const currentCourse = mockFacilitatorCourses[0];
 
@@ -52,17 +57,21 @@ export const FacilitatorSubmissions = () => {
   useEffect(() => {
     let isMounted = true;
     const fetchData = async () => {
+      setIsLoading(true);
+      setApiError(null);
       try {
         const [subsData, asgsData] = await Promise.all([
           submissionApi.getSubmissions(),
           assignmentApi.getAssignments()
         ]);
         if (isMounted) {
-          if (subsData) setSubmissions(subsData);
-          if (asgsData) setAssignments(asgsData);
+          setSubmissions(Array.isArray(subsData) ? subsData : []);
+          setAssignments(Array.isArray(asgsData) ? asgsData : []);
         }
       } catch (err) {
-        if (isMounted) setApiError(err.message || 'Failed to sync queue with server');
+        if (isMounted) setApiError(err.userFriendlyMessage || err.message || 'Failed to sync queue with server');
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
     };
     fetchData();
@@ -358,19 +367,48 @@ export const FacilitatorSubmissions = () => {
       </Card>
 
       {/* Main Submissions Content */}
-      {filteredSubmissions.length === 0 ? (
+      {isLoading ? (
+        <Card className="p-12 text-center shadow-soft">
+          <div className="flex flex-col items-center justify-center space-y-3">
+            <div className="w-8 h-8 rounded-full border-2 border-brand-blue border-t-transparent animate-spin" />
+            <p className="text-xs font-semibold text-brand-text-secondary">Loading cohort submissions...</p>
+          </div>
+        </Card>
+      ) : apiError ? (
+        <Card className="p-8 text-center shadow-soft border-red-200 bg-red-50/40">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-bold text-red-900">
+              Unable to load submissions
+            </h3>
+            <p className="text-xs text-red-700 leading-relaxed">
+              {apiError}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchData}
+              className="mt-2 text-xs border-red-300 text-red-800 hover:bg-red-100"
+            >
+              Retry
+            </Button>
+          </div>
+        </Card>
+      ) : filteredSubmissions.length === 0 ? (
         <Card className="p-12 text-center shadow-soft">
           <div className="max-w-sm mx-auto space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-brand-blue-light text-brand-blue flex items-center justify-center mx-auto">
               <Inbox className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-brand-text-primary">
-              No submissions match criteria
+              {hasActiveFilters ? 'No submissions match criteria' : 'No submissions yet'}
             </h3>
             <p className="text-xs text-brand-text-secondary leading-relaxed">
               {hasActiveFilters
                 ? 'Try clearing active filters or search terms to see all cohort submissions.'
-                : 'No submissions are currently waiting in this queue.'}
+                : 'No student submissions have been submitted for your assignments yet.'}
             </p>
             {hasActiveFilters && (
               <Button

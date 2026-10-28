@@ -601,7 +601,7 @@ export const FacilitatorRubrics = () => {
                             • {crit.name}
                           </span>
                           <span className="text-brand-text-secondary font-bold shrink-0">
-                            {crit.marks}m ({crit.weight || `${Math.round((crit.marks / (rubric.totalMarks || 1)) * 100)}%`})
+                            {crit.marks ?? crit.maxMarks ?? 5}m ({crit.weight || (crit.weightage !== undefined ? `${crit.weightage}%` : `${Math.round(((crit.marks ?? crit.maxMarks ?? 5) / (rubric.totalMarks || 1)) * 100)}%`)})
                           </span>
                         </div>
                       ))}

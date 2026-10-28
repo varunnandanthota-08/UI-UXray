@@ -45,6 +45,16 @@ import {
 /**
  * Normalization & Status Mapping Helpers
  */
+export function isValidMongoId(id) {
+  return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id.trim());
+}
+
+export function isDemoSession() {
+  if (typeof window === 'undefined') return false;
+  const token = localStorage.getItem('barabari_facilitator_token');
+  return typeof token === 'string' && token.startsWith('demo-token-');
+}
+
 export function mapBackendStatusToFrontend(status) {
   if (!status) return 'DRAFT';
   const s = String(status).toLowerCase();
@@ -320,24 +330,41 @@ export function toBackendSubmission(f) {
 export function fromBackendRubric(r) {
   if (!r) return null;
   const id = r._id || r.id;
+  const totalMarks = Number(r.totalMarks ?? 20);
+  const totalWeightage = Number(r.totalWeightage ?? 100);
+
   return {
     ...r,
     id,
     _id: id,
     assignmentId: r.assignmentId?._id || r.assignmentId,
-    totalMarks: r.totalMarks ?? 20,
-    totalWeightage: r.totalWeightage ?? 100,
+    totalMarks,
+    maxScore: totalMarks,
+    totalWeightage,
     status: r.status || 'PUBLISHED',
     criteria: Array.isArray(r.criteria)
-      ? r.criteria.map((c, idx) => ({
-          ...c,
-          id: c._id || c.id || `crit-${idx + 1}`,
-          name: c.name || '',
-          description: c.description || '',
-          maxMarks: Number(c.maxMarks ?? 5),
-          weightage: Number(c.weightage ?? 20),
-          checks: Array.isArray(c.checks) ? c.checks : []
-        }))
+      ? r.criteria.map((c, idx) => {
+          const maxMarks = Number(c.maxMarks ?? c.marks ?? 5);
+          const weightageVal = c.weightage !== undefined
+            ? Number(c.weightage)
+            : (c.weight ? Number(String(c.weight).replace('%', '')) : Math.round((maxMarks / totalMarks) * 100));
+          const weight = `${weightageVal}%`;
+
+          return {
+            ...c,
+            id: c._id || c.id || `crit-${idx + 1}`,
+            _id: c._id || c.id || `crit-${idx + 1}`,
+            name: c.name || c.criterionName || c.title || `Criterion ${idx + 1}`,
+            title: c.name || c.criterionName || c.title || `Criterion ${idx + 1}`,
+            description: c.description || '',
+            maxMarks,
+            marks: maxMarks,
+            weightage: weightageVal,
+            weight,
+            checks: Array.isArray(c.checks) ? c.checks : [],
+            descriptors: Array.isArray(c.descriptors) ? c.descriptors : []
+          };
+        })
       : []
   };
 }
@@ -347,11 +374,14 @@ export function toBackendRubric(r) {
   const count = (r.criteria && r.criteria.length) || 1;
   const criteria = Array.isArray(r.criteria)
     ? r.criteria.map((c, idx) => {
-        const weightage = c.weightage !== undefined ? Number(c.weightage) : Math.round(100 / count);
+        const weightage = c.weightage !== undefined
+          ? Number(c.weightage)
+          : (c.weight ? Number(String(c.weight).replace('%', '')) : Math.round(100 / count));
+        const maxMarks = Number(c.maxMarks ?? c.marks ?? c.maximumMarks ?? 5);
         return {
           name: (c.name || c.criterionName || c.title || `Criterion ${idx + 1}`).trim(),
           description: (c.description || '').trim(),
-          maxMarks: Number(c.maxMarks ?? c.maximumMarks ?? 5),
+          maxMarks,
           weightage,
           checks: Array.isArray(c.checks) ? c.checks : (c.requirements || [])
         };
@@ -492,21 +522,31 @@ export function fromBackendEvaluation(raw, { forStudent = false } = {}) {
 
 export function toBackendEvaluation(data = {}, linkedCriteria = [], totalMarks = 20, isFinal = false) {
   const status = isFinal ? 'approved' : 'draft';
-  const finalMarks = Number(data.totalScore ?? data.finalMarks ?? 0);
+  const finalMarks = Number(data.totalScore ?? data.score ?? data.finalMarks ?? data.facilitatorMarks ?? 0);
 
   let criteriaResults = [];
-  if (Array.isArray(linkedCriteria) && linkedCriteria.length > 0) {
-    criteriaResults = linkedCriteria.map((crit, idx) => {
+  const criteriaToMap = (Array.isArray(linkedCriteria) && linkedCriteria.length > 0)
+    ? linkedCriteria
+    : (Array.isArray(data.criteria) && data.criteria.length > 0 ? data.criteria : []);
+
+  if (criteriaToMap.length > 0) {
+    criteriaResults = criteriaToMap.map((crit, idx) => {
       const critId = crit._id || crit.id || `crit-${idx + 1}`;
       const awarded = data.criterionScores?.[critId] !== undefined
         ? Number(data.criterionScores[critId])
-        : Number(data.criterionScores?.[crit.name] ?? (crit.maxMarks || 5));
+        : Number(data.criterionScores?.[crit.name] ?? (crit.maxMarks || crit.marks || 5));
       const comment = data.criterionFeedback?.[critId] || data.criterionFeedback?.[crit.name] || '';
+      const maxMarks = Number(crit.maxMarks ?? crit.marks ?? 5);
+      const weightage = crit.weightage !== undefined
+        ? Number(crit.weightage)
+        : (crit.weight ? Number(String(crit.weight).replace('%', '')) : Math.round(100 / criteriaToMap.length));
 
       const resObj = {
         criterionName: crit.name || crit.title || `Criterion ${idx + 1}`,
-        maxMarks: Number(crit.maxMarks || 5),
+        description: crit.description || '',
+        maxMarks,
         awardedMarks: Number.isFinite(awarded) && awarded >= 0 ? awarded : 0,
+        weightage,
         facilitatorComment: comment,
       };
       if (crit._id && String(crit._id).length === 24) {
@@ -519,6 +559,7 @@ export function toBackendEvaluation(data = {}, linkedCriteria = [], totalMarks =
       criterionName: `Criterion ${idx + 1}`,
       maxMarks: 5,
       awardedMarks: Number(score) || 0,
+      weightage: Math.round(100 / Object.keys(data.criterionScores).length),
       facilitatorComment: data.criterionFeedback?.[key] || ''
     }));
   }
@@ -575,11 +616,18 @@ async function withFacilitatorFallback(apiCall, mockCall, endpointName = 'Endpoi
 /**
  * Authentication with Fallback Helper
  */
+function isNetworkError(error) {
+  return !error?.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED';
+}
+
 async function withFallbackAuth(apiCall, mockCall, opName) {
   try {
     const response = await apiCall();
     if (response?.data) return response.data;
-  } catch {
+  } catch (error) {
+    if (!isNetworkError(error)) {
+      throw error;
+    }
     console.warn(`[Facilitator Auth] ${opName} backend unavailable. Initializing authenticated demo persona.`);
     return mockCall();
   }
@@ -640,6 +688,9 @@ export const facilitatorApi = {
   // 2. ASSIGNMENTS (Real backend: /api/assignments)
   // =========================================================================
   getAssignments: async () => {
+    if (isDemoSession()) {
+      return getFacilitatorAssignments();
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get('/assignments', { role: 'facilitator' });
@@ -652,6 +703,10 @@ export const facilitatorApi = {
   },
 
   getAssignment: async (assignmentId) => {
+    if (!isValidMongoId(assignmentId)) {
+      const assignments = getFacilitatorAssignments();
+      return assignments.find(a => a.id === assignmentId) || null;
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get(`/assignments/${assignmentId}`, { role: 'facilitator' });
@@ -678,6 +733,9 @@ export const facilitatorApi = {
   },
 
   updateAssignment: async (id, assignmentData) => {
+    if (!isValidMongoId(id)) {
+      return mockUpdateAssignment(id, assignmentData);
+    }
     return withFacilitatorFallback(
       async () => {
         const payload = toBackendAssignment(assignmentData);
@@ -697,6 +755,9 @@ export const facilitatorApi = {
   },
 
   toggleAssignmentStatus: async (assignmentId, nextStatus) => {
+    if (!isValidMongoId(assignmentId)) {
+      return mockToggleAssignmentStatus(assignmentId, nextStatus);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.put(`/assignments/${assignmentId}`, {
@@ -710,6 +771,9 @@ export const facilitatorApi = {
   },
 
   deleteAssignment: async (assignmentId) => {
+    if (!isValidMongoId(assignmentId)) {
+      return mockDeleteAssignment(assignmentId);
+    }
     return withFacilitatorFallback(
       () => apiClient.delete(`/assignments/${assignmentId}`, { role: 'facilitator' }),
       () => mockDeleteAssignment(assignmentId),
@@ -729,6 +793,9 @@ export const facilitatorApi = {
   // 3. RUBRICS (Real backend: /api/assignments/:assignmentId/rubric)
   // =========================================================================
   getRubrics: async () => {
+    if (isDemoSession()) {
+      return getFacilitatorRubrics();
+    }
     return withFacilitatorFallback(
       async () => {
         const asgRes = await apiClient.get('/assignments', { role: 'facilitator' });
@@ -737,8 +804,10 @@ export const facilitatorApi = {
 
         const rubrics = await Promise.all(
           assignments.map(async (asg) => {
+            const asgId = asg._id || asg.id;
+            if (!isValidMongoId(asgId)) return null;
             try {
-              const rRes = await apiClient.get(`/assignments/${asg._id || asg.id}/rubric`, { role: 'facilitator' });
+              const rRes = await apiClient.get(`/assignments/${asgId}/rubric`, { role: 'facilitator' });
               return fromBackendRubric({ ...rRes.data, assignmentId: asg });
             } catch {
               return null;
@@ -754,6 +823,10 @@ export const facilitatorApi = {
   },
 
   getRubric: async (rubricOrAssignmentId) => {
+    if (!isValidMongoId(rubricOrAssignmentId)) {
+      const rubrics = getFacilitatorRubrics();
+      return rubrics.find(r => r.id === rubricOrAssignmentId || r.assignmentId === rubricOrAssignmentId) || null;
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get(`/assignments/${rubricOrAssignmentId}/rubric`, { role: 'facilitator' });
@@ -768,6 +841,10 @@ export const facilitatorApi = {
   },
 
   createRubric: async (rubricData) => {
+    const asgId = rubricData.assignmentId;
+    if (!isValidMongoId(asgId)) {
+      return mockCreateRubric(rubricData);
+    }
     return withFacilitatorFallback(
       async () => {
         const payload = toBackendRubric(rubricData);
@@ -781,6 +858,10 @@ export const facilitatorApi = {
   },
 
   updateRubric: async (id, rubricData) => {
+    const asgId = rubricData.assignmentId || id;
+    if (!isValidMongoId(asgId)) {
+      return mockUpdateRubric(id, rubricData);
+    }
     return withFacilitatorFallback(
       async () => {
         const payload = toBackendRubric(rubricData);
@@ -801,6 +882,9 @@ export const facilitatorApi = {
   },
 
   toggleRubricStatus: async (rubricId, nextStatus) => {
+    if (!isValidMongoId(rubricId)) {
+      return mockToggleRubricStatus(rubricId, nextStatus);
+    }
     return withFacilitatorFallback(
       () => apiClient.patch(`/assignments/${rubricId}/rubric/status`, { status: nextStatus }, { role: 'facilitator' }),
       () => mockToggleRubricStatus(rubricId, nextStatus),
@@ -809,6 +893,9 @@ export const facilitatorApi = {
   },
 
   deleteRubric: async (rubricOrAssignmentId) => {
+    if (!isValidMongoId(rubricOrAssignmentId)) {
+      return mockDeleteRubric(rubricOrAssignmentId);
+    }
     return withFacilitatorFallback(
       () => apiClient.delete(`/assignments/${rubricOrAssignmentId}/rubric`, { role: 'facilitator' }),
       () => mockDeleteRubric(rubricOrAssignmentId),
@@ -820,6 +907,21 @@ export const facilitatorApi = {
   // 4. SUBMISSIONS & GRADING QUEUE (Backend: /api/assignments/:id/submissions, /api/submissions/:id)
   // =========================================================================
   getSubmissions: async (params = {}) => {
+    if (isDemoSession()) {
+      let subs = getFacilitatorSubmissions();
+      if (params.assignmentId && params.assignmentId !== 'ALL') {
+        subs = subs.filter(s => s.assignmentId === params.assignmentId);
+      }
+      if (params.status && params.status !== 'ALL') {
+        subs = subs.filter(s => s.evaluationStatus === params.status);
+      }
+      return subs;
+    }
+
+    if (params.assignmentId && params.assignmentId !== 'ALL' && !isValidMongoId(params.assignmentId)) {
+      return [];
+    }
+
     return withFacilitatorFallback(
       async () => {
         // Direct assignment query
@@ -836,8 +938,10 @@ export const facilitatorApi = {
 
         const batches = await Promise.all(
           assignments.map(async (asg) => {
+            const asgId = asg._id || asg.id;
+            if (!isValidMongoId(asgId)) return [];
             try {
-              const res = await apiClient.get(`/assignments/${asg._id || asg.id}/submissions`, { role: 'facilitator' });
+              const res = await apiClient.get(`/assignments/${asgId}/submissions`, { role: 'facilitator' });
               const list = Array.isArray(res.data) ? res.data : [];
               return list.map(s => fromBackendSubmission({ ...s, assignmentId: asg }));
             } catch {
@@ -866,6 +970,10 @@ export const facilitatorApi = {
   },
 
   getSubmission: async (submissionId) => {
+    if (!isValidMongoId(submissionId)) {
+      const subs = getFacilitatorSubmissions();
+      return subs.find(s => s.id === submissionId) || null;
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get(`/submissions/${submissionId}`, { role: 'facilitator' });
@@ -880,6 +988,9 @@ export const facilitatorApi = {
   },
 
   returnSubmission: async (submissionId, reason) => {
+    if (!isValidMongoId(submissionId)) {
+      return mockReturnSubmission(submissionId, reason);
+    }
     return withFacilitatorFallback(
       () => apiClient.post(`/submissions/${submissionId}/return`, { reason }, { role: 'facilitator' }),
       () => mockReturnSubmission(submissionId, reason),
@@ -891,6 +1002,27 @@ export const facilitatorApi = {
   // 5. EVALUATIONS (Real backend: POST /submissions/:id/ai-draft, POST /submissions/:id/evaluation, GET /submissions/:id/evaluation, PUT /evaluations/:id)
   // =========================================================================
   generateAiDraft: async (submissionId) => {
+    if (!isValidMongoId(submissionId)) {
+      return {
+        aiSuggestedMarks: 17,
+        score: 17,
+        aiFeedback: {
+          strengths: [
+            'Clear interactive workflow with proper Figma layout hierarchy',
+            'Thorough mapping of user decision paths and interaction branches',
+            'Strong visual hierarchy and consistent spacing'
+          ],
+          missingRequirements: [
+            'Further explore edge cases and accessibility contrast ratios (WCAG AAA)'
+          ],
+          improvements: [
+            'Include annotated states for hover, error, and empty views in primary wireframes'
+          ],
+          criterionObservations: []
+        },
+        criteriaBreakdown: []
+      };
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.post(`/submissions/${submissionId}/ai-draft`, {}, { role: 'facilitator' });
@@ -922,6 +1054,10 @@ export const facilitatorApi = {
   },
 
   getSubmissionEvaluation: async (submissionId) => {
+    if (!isValidMongoId(submissionId)) {
+      const evals = getFacilitatorEvaluations();
+      return evals.find(e => e.submissionId === submissionId) || null;
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get(`/submissions/${submissionId}/evaluation`, { role: 'facilitator' });
@@ -936,6 +1072,23 @@ export const facilitatorApi = {
   },
 
   saveEvaluationDraft: async (submissionId, draftData = {}) => {
+    if (!isValidMongoId(submissionId)) {
+      const submissions = getFacilitatorSubmissions();
+      const index = submissions.findIndex(s => s.id === submissionId);
+      if (index === -1) return null;
+      const updated = {
+        ...submissions[index],
+        evaluationStatus: 'IN_REVIEW',
+        evaluation: {
+          ...(submissions[index].evaluation || {}),
+          ...draftData,
+          status: 'IN_REVIEW'
+        }
+      };
+      submissions[index] = updated;
+      saveFacilitatorSubmissions(submissions);
+      return updated;
+    }
     return withFacilitatorFallback(
       async () => {
         let existingId = null;
@@ -948,7 +1101,17 @@ export const facilitatorApi = {
           existingId = null;
         }
 
-        const criteria = draftData.criteria || [];
+        let criteria = draftData.criteria || [];
+        if (criteria.length === 0) {
+          try {
+            const checkSub = await apiClient.get(`/submissions/${submissionId}`, { role: 'facilitator' });
+            const asgId = checkSub.data?.assignmentId?._id || checkSub.data?.assignmentId;
+            if (asgId && isValidMongoId(asgId)) {
+              const rRes = await apiClient.get(`/assignments/${asgId}/rubric`, { role: 'facilitator' });
+              if (rRes.data?.criteria) criteria = rRes.data.criteria;
+            }
+          } catch {}
+        }
         const payload = toBackendEvaluation(draftData, criteria, draftData.maxScore || 20, false);
 
         let res;
@@ -991,6 +1154,9 @@ export const facilitatorApi = {
   },
 
   finalizeEvaluation: async (submissionId, evaluationData = {}) => {
+    if (!isValidMongoId(submissionId)) {
+      return mockFinalizeEvaluation(submissionId, evaluationData);
+    }
     return withFacilitatorFallback(
       async () => {
         let existingId = null;
@@ -1003,7 +1169,17 @@ export const facilitatorApi = {
           existingId = null;
         }
 
-        const criteria = evaluationData.criteria || [];
+        let criteria = evaluationData.criteria || [];
+        if (criteria.length === 0) {
+          try {
+            const checkSub = await apiClient.get(`/submissions/${submissionId}`, { role: 'facilitator' });
+            const asgId = checkSub.data?.assignmentId?._id || checkSub.data?.assignmentId;
+            if (asgId && isValidMongoId(asgId)) {
+              const rRes = await apiClient.get(`/assignments/${asgId}/rubric`, { role: 'facilitator' });
+              if (rRes.data?.criteria) criteria = rRes.data.criteria;
+            }
+          } catch {}
+        }
         const payload = toBackendEvaluation(evaluationData, criteria, evaluationData.maxScore || 20, true);
 
         let res;
@@ -1030,6 +1206,16 @@ export const facilitatorApi = {
   },
 
   getEvaluations: async (params = {}) => {
+    if (isDemoSession()) {
+      let evals = getFacilitatorEvaluations();
+      if (params.assignmentId && params.assignmentId !== 'ALL') {
+        evals = evals.filter(e => e.assignmentId === params.assignmentId);
+      }
+      if (params.status && params.status !== 'ALL') {
+        evals = evals.filter(e => e.status === params.status);
+      }
+      return evals;
+    }
     return withFacilitatorFallback(
       async () => {
         const asgRes = await apiClient.get('/assignments', { role: 'facilitator' });
@@ -1038,12 +1224,16 @@ export const facilitatorApi = {
 
         const evalsList = [];
         for (const asg of assignments) {
+          const asgId = asg._id || asg.id;
+          if (!isValidMongoId(asgId)) continue;
           try {
-            const subRes = await apiClient.get(`/assignments/${asg._id || asg.id}/submissions`, { role: 'facilitator' });
+            const subRes = await apiClient.get(`/assignments/${asgId}/submissions`, { role: 'facilitator' });
             const subs = Array.isArray(subRes.data) ? subRes.data : [];
             for (const sub of subs) {
+              const subId = sub._id || sub.id;
+              if (!isValidMongoId(subId)) continue;
               try {
-                const evRes = await apiClient.get(`/submissions/${sub._id || sub.id}/evaluation`, { role: 'facilitator' });
+                const evRes = await apiClient.get(`/submissions/${subId}/evaluation`, { role: 'facilitator' });
                 if (evRes.data) {
                   evalsList.push(fromBackendEvaluation({
                     ...evRes.data,
@@ -1088,6 +1278,9 @@ export const facilitatorApi = {
   },
 
   getEvaluation: async (evaluationId) => {
+    if (!isValidMongoId(evaluationId)) {
+      return mockGetEvaluationById(evaluationId);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.get(`/submissions/${evaluationId}/evaluation`, { role: 'facilitator' });
@@ -1099,6 +1292,9 @@ export const facilitatorApi = {
   },
 
   updateEvaluation: async (id, updates) => {
+    if (!isValidMongoId(id)) {
+      return mockGetEvaluationById(id);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.put(`/evaluations/${id}`, updates, { role: 'facilitator' });
@@ -1122,6 +1318,9 @@ export const facilitatorApi = {
   },
 
   approveReEvaluation: async (evaluationId, facilitatorNotes = '') => {
+    if (!isValidMongoId(evaluationId)) {
+      return mockApproveReEvaluation(evaluationId, facilitatorNotes);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.post(`/re-evaluations/${evaluationId}/approve`, { facilitatorNotes }, { role: 'facilitator' });
@@ -1133,6 +1332,9 @@ export const facilitatorApi = {
   },
 
   rejectReEvaluation: async (evaluationId, declineReason) => {
+    if (!isValidMongoId(evaluationId)) {
+      return mockRejectReEvaluation(evaluationId, declineReason);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.post(`/re-evaluations/${evaluationId}/reject`, { declineReason }, { role: 'facilitator' });
@@ -1144,6 +1346,9 @@ export const facilitatorApi = {
   },
 
   finalizeReEvaluation: async (evaluationId, resolutionData) => {
+    if (!isValidMongoId(evaluationId)) {
+      return mockFinalizeReEvaluation(evaluationId, resolutionData);
+    }
     return withFacilitatorFallback(
       async () => {
         const res = await apiClient.post(`/re-evaluations/${evaluationId}/finalize`, resolutionData, { role: 'facilitator' });
