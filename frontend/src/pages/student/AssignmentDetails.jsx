@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import studentApi from '../../api/studentApi';
+import studentApi, { resolveAssignmentAction } from '../../api/studentApi';
 import RubricPreview from '../../components/student/RubricPreview';
 import { CardSkeleton } from '../../components/ui/Skeleton';
+import EmptyState from '../../components/ui/EmptyState';
 import Button from '../../components/ui/Button';
 import { 
   ArrowLeft, 
@@ -13,13 +14,17 @@ import {
   FileText, 
   SendHorizontal, 
   Clock,
-  Layers
+  Layers,
+  AlertCircle
 } from 'lucide-react';
 
 export const AssignmentDetails = () => {
   const { assignmentId } = useParams();
   const [assignment, setAssignment] = useState(null);
+  const [submission, setSubmission] = useState(null);
+  const [hasDraft, setHasDraft] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isRubricOpen, setIsRubricOpen] = useState(false);
   const [rubricData, setRubricData] = useState(null);
   const [rubricLoading, setRubricLoading] = useState(false);
@@ -28,10 +33,22 @@ export const AssignmentDetails = () => {
     const fetchAssignment = async () => {
       try {
         setLoading(true);
-        const res = await studentApi.getAssignment(assignmentId);
-        setAssignment(res.data);
+        setError(null);
+        const [asgRes, subRes, draftRes] = await Promise.all([
+          studentApi.getAssignment(assignmentId),
+          studentApi.getMySubmission(assignmentId),
+          studentApi.getDraft(assignmentId)
+        ]);
+        if (asgRes?.data) {
+          setAssignment(asgRes.data);
+        } else {
+          setError('Assignment not found');
+        }
+        setSubmission(subRes?.data || null);
+        setHasDraft(Boolean(draftRes?.data && (draftRes.data.figmaUrl || draftRes.data.artifactValues)));
       } catch (err) {
         console.error('Error fetching assignment:', err);
+        setError(err.message || 'Failed to load assignment details');
       } finally {
         setLoading(false);
       }
@@ -40,11 +57,34 @@ export const AssignmentDetails = () => {
     fetchAssignment();
   }, [assignmentId]);
 
-  if (loading || !assignment) {
+  if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-4xl mx-auto">
         <div className="h-24 bg-white rounded-2xl animate-pulse" />
         <CardSkeleton />
+      </div>
+    );
+  }
+
+  if (error || !assignment) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div>
+          <Link
+            to="/student/courses"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>← Back to Courses</span>
+          </Link>
+        </div>
+        <EmptyState
+          icon={AlertCircle}
+          title="Assignment not found"
+          description={error || "We couldn't locate the requested assignment. It may have been moved or removed."}
+          actionLabel="View All Courses"
+          onAction={() => { window.location.href = '/student/courses'; }}
+        />
       </div>
     );
   }
@@ -66,10 +106,26 @@ export const AssignmentDetails = () => {
     }
   };
 
-  const requirements = assignment?.requirements || [];
+  const action = resolveAssignmentAction({
+    assignmentId: assignment?.id,
+    submission,
+    hasDraft
+  });
+
+  const ctaLabel = action.label === 'Submit Assignment' ? 'Start Submission' : action.label;
+  const ctaLink = action.link;
+  const ctaIcon = action.isEvaluated ? Award : SendHorizontal;
+  const displayStatus = action.badgeLabel;
+
+  const requirements = Array.isArray(assignment?.requirements) ? assignment.requirements : [];
   const completedCount = requirements.filter((r) => r.completed).length;
   const totalCount = requirements.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const instructionsList = Array.isArray(assignment.instructions)
+    ? assignment.instructions
+    : typeof assignment.instructions === 'string' && assignment.instructions.trim()
+    ? [assignment.instructions]
+    : [];
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
@@ -90,10 +146,10 @@ export const AssignmentDetails = () => {
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-brand-blue bg-brand-blue-light px-2.5 py-1 rounded-full">
-                Phase: {assignment.phase}
+                Phase: {assignment.phase || 'Studio Sprint'}
               </span>
               <span className="text-xs text-brand-text-secondary">
-                {assignment.courseTitle || 'UI/UX Product Design'} • Unit 0{assignment.assignmentNumber}
+                {assignment.courseTitle || 'UI/UX Product Design'} • Unit 0{assignment.assignmentNumber || 4}
               </span>
             </div>
 
@@ -108,7 +164,7 @@ export const AssignmentDetails = () => {
 
           <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center p-5 bg-[#F8F9F8] rounded-2xl border border-brand-border/70 shrink-0 min-w-[170px]">
             <span className="text-xs font-bold text-brand-text-secondary uppercase tracking-wider">Maximum Marks</span>
-            <span className="text-3xl font-black text-brand-blue mt-0.5">{assignment.maxScore || assignment.maxMarks || 20}</span>
+            <span className="text-3xl font-black text-brand-blue mt-0.5">{assignment.maxScore || assignment.maxMarks || assignment.totalMarks || 20}</span>
             <span className="text-[11px] text-brand-text-secondary mt-0.5">Rubric Weighted</span>
           </div>
         </div>
@@ -118,12 +174,12 @@ export const AssignmentDetails = () => {
           <div className="flex flex-wrap items-center gap-4 text-xs text-brand-text-secondary">
             <div className="flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-brand-warning" />
-              <span>Deadline: <strong className="text-brand-text-primary">{assignment.dueDate || assignment.deadline}</strong></span>
+              <span>Deadline: <strong className="text-brand-text-primary">{assignment.dueDateFormatted || assignment.dueDate || assignment.deadline || 'Upcoming'}</strong></span>
             </div>
             <span>•</span>
             <div className="flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-brand-text-secondary" />
-              <span>Status: <strong className="text-brand-text-primary">{assignment.status}</strong></span>
+              <span>Status: <strong className="text-brand-text-primary">{displayStatus}</strong></span>
             </div>
           </div>
 
@@ -138,14 +194,14 @@ export const AssignmentDetails = () => {
               View Rubric
             </Button>
 
-            <Link to={`/student/assignments/${assignment.id}/submit`}>
+            <Link to={ctaLink}>
               <Button
                 variant="primary"
                 size="md"
-                icon={SendHorizontal}
+                icon={ctaIcon}
                 iconPosition="right"
               >
-                {completedCount > 0 ? 'Continue Submission' : 'Start Submission'}
+                {ctaLabel}
               </Button>
             </Link>
           </div>
@@ -191,25 +247,27 @@ export const AssignmentDetails = () => {
         {/* Left: Objective & Instructions */}
         <div className="md:col-span-6 space-y-6">
           {/* Learning Objective */}
-          <div className="bg-white rounded-3xl border border-brand-border p-6 md:p-7 shadow-soft space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-brand-blue uppercase tracking-wider">
-              <Layers className="w-4 h-4" />
-              <span>Studio Objective</span>
+          {assignment.objective && (
+            <div className="bg-white rounded-3xl border border-brand-border p-6 md:p-7 shadow-soft space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-brand-blue uppercase tracking-wider">
+                <Layers className="w-4 h-4" />
+                <span>Studio Objective</span>
+              </div>
+              <p className="text-xs md:text-sm text-brand-text-primary leading-relaxed">
+                {assignment.objective}
+              </p>
             </div>
-            <p className="text-xs md:text-sm text-brand-text-primary leading-relaxed">
-              {assignment.objective}
-            </p>
-          </div>
+          )}
 
           {/* Instructions */}
-          {assignment.instructions && (
+          {instructionsList.length > 0 && (
             <div className="bg-white rounded-3xl border border-brand-border p-6 md:p-7 shadow-soft space-y-4">
               <div className="flex items-center gap-2 text-xs font-bold text-brand-text-primary uppercase tracking-wider">
                 <FileText className="w-4 h-4 text-brand-blue" />
                 <span>Assignment Instructions</span>
               </div>
               <div className="space-y-3">
-                {assignment.instructions.map((inst, idx) => (
+                {instructionsList.map((inst, idx) => (
                   <div key={idx} className="flex items-start gap-3 text-xs md:text-sm text-brand-text-primary leading-relaxed">
                     <span className="w-5 h-5 rounded-full bg-brand-blue-light text-brand-blue font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                       {idx + 1}
@@ -242,7 +300,7 @@ export const AssignmentDetails = () => {
             <div className="space-y-3">
               {requirements.map((req, idx) => (
                 <div
-                  key={req.requirementId || idx}
+                  key={req.requirementId || req.id || idx}
                   className={`p-4 rounded-2xl border transition-all ${
                     req.completed
                       ? 'bg-[#F9FAF9] border-emerald-200/70'
@@ -282,9 +340,9 @@ export const AssignmentDetails = () => {
 
             {/* Next Step Banner */}
             <div className="pt-2">
-              <Link to={`/student/assignments/${assignment.id}/submit`}>
-                <Button variant="primary" size="md" className="w-full" icon={SendHorizontal} iconPosition="right">
-                  Open Submission Workspace →
+              <Link to={ctaLink}>
+                <Button variant="primary" size="md" className="w-full" icon={ctaIcon} iconPosition="right">
+                  {ctaLabel} →
                 </Button>
               </Link>
             </div>
@@ -295,7 +353,7 @@ export const AssignmentDetails = () => {
       {/* Rubric Preview Modal */}
       <RubricPreview
         rubric={rubricData || assignment.rubric || []}
-        maxScore={assignment.maxScore || assignment.maxMarks || 20}
+        maxScore={assignment.maxScore || assignment.maxMarks || assignment.totalMarks || 20}
         isOpen={isRubricOpen}
         onClose={() => setIsRubricOpen(false)}
       />

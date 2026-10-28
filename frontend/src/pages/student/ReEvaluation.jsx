@@ -4,35 +4,45 @@ import studentApi from '../../api/studentApi';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import { CardSkeleton } from '../../components/ui/Skeleton';
+import EmptyState from '../../components/ui/EmptyState';
 import { 
   ArrowLeft, 
   Clock, 
   ShieldAlert, 
-  SendHorizontal 
+  SendHorizontal,
+  AlertCircle
 } from 'lucide-react';
 
 export const ReEvaluation = () => {
   const { evaluationId } = useParams();
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [existingRequest, setExistingRequest] = useState(null);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        setError(null);
         const [evalRes, reqRes] = await Promise.all([
           studentApi.getEvaluation(evaluationId),
           studentApi.getReEvaluation(evaluationId)
         ]);
-        setEvaluation(evalRes.data);
+        if (evalRes?.data) {
+          setEvaluation(evalRes.data);
+        } else {
+          setError('Evaluation not found');
+        }
         if (reqRes?.data) {
           setExistingRequest(reqRes.data);
         }
       } catch (err) {
         console.error('Error loading re-evaluation data:', err);
+        setError(err.message || 'Failed to load re-evaluation details');
       } finally {
         setLoading(false);
       }
@@ -43,29 +53,70 @@ export const ReEvaluation = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!reason.trim()) return;
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 10) {
+      setSubmitError('Please provide a reason of at least 10 characters.');
+      return;
+    }
+    if (cleanReason.length > 500) {
+      setSubmitError('Reason cannot exceed 500 characters.');
+      return;
+    }
 
     setIsSubmitting(true);
+    setSubmitError(null);
+
     try {
       const payload = {
-        evaluationId,
-        assignmentId: evaluation?.assignmentId,
-        reason: reason.trim()
+        evaluationId: evaluation?.id || evaluation?._id || evaluationId,
+        assignmentId: evaluation?.assignmentId?._id || evaluation?.assignmentId,
+        submissionId: evaluation?.submissionId?._id || evaluation?.submissionId,
+        reason: cleanReason
       };
       const res = await studentApi.requestReEvaluation(payload);
-      setExistingRequest(res.data);
+      if (res?.data) {
+        setExistingRequest(res.data);
+      } else {
+        throw new Error('Failed to submit re-evaluation request');
+      }
     } catch (err) {
       console.error('Error submitting re-evaluation:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to submit re-evaluation request. Please try again.';
+      setSubmitError(msg);
+      // Retain reason in state so student input is not lost
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading || !evaluation) {
+  if (loading) {
     return (
       <div className="space-y-6">
         <div className="h-20 bg-white rounded-2xl animate-pulse" />
         <CardSkeleton />
+      </div>
+    );
+  }
+
+  if (error || !evaluation) {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto">
+        <div>
+          <Link
+            to="/student/submissions"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to All Submissions</span>
+          </Link>
+        </div>
+        <EmptyState
+          icon={ShieldAlert}
+          title="Evaluation not found"
+          description={error || "We couldn't locate the evaluation record to submit a re-evaluation request for."}
+          actionLabel="View All Submissions"
+          onAction={() => { window.location.href = '/student/submissions'; }}
+        />
       </div>
     );
   }
@@ -77,6 +128,7 @@ export const ReEvaluation = () => {
       case 'UNDER_REVIEW':
         return <Badge variant="blue" size="md" dot>Under Mentor Review</Badge>;
       case 'RESOLVED':
+      case 'COMPLETED':
         return <Badge variant="success" size="md" dot>Resolved</Badge>;
       case 'REJECTED':
         return <Badge variant="error" size="md" dot>Rejected</Badge>;
@@ -141,6 +193,17 @@ export const ReEvaluation = () => {
                 </p>
               </div>
 
+              {existingRequest.facilitatorNotes && (
+                <div className="text-xs text-brand-text-primary space-y-1">
+                  <p>
+                    <strong>Facilitator Notes:</strong>
+                  </p>
+                  <p className="p-3 bg-white rounded-xl border border-blue-200 text-brand-text-secondary italic">
+                    "{existingRequest.facilitatorNotes}"
+                  </p>
+                </div>
+              )}
+
               <p className="text-[11px] text-brand-text-secondary leading-relaxed">
                 Your request is recorded. Lead facilitator {evaluation.facilitator?.name || 'Rohan Mehta'} will review the submission frame notes during studio hours.
               </p>
@@ -165,18 +228,36 @@ export const ReEvaluation = () => {
               </p>
             </div>
 
+            {submitError && (
+              <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs rounded-2xl flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-semibold">Unable to submit request</p>
+                  <p className="text-red-700">{submitError}</p>
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-semibold text-brand-text-primary mb-1.5">
+              <label htmlFor="reason-textarea" className="block text-xs font-semibold text-brand-text-primary mb-1.5">
                 Reason for Re-evaluation <span className="text-brand-error">*</span>
               </label>
               <textarea
+                id="reason-textarea"
                 rows={5}
                 required
+                maxLength={500}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="E.g., In the 'User Flow & State Fidelity' criterion, the back navigation affordance was added in frame 'Checkout_v2' (Node 123:45) which may have been overlooked during the automated scan..."
                 className="w-full px-3.5 py-3 text-xs rounded-xl border border-brand-border bg-[#FAFAF8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue text-brand-text-primary transition-all leading-relaxed"
               />
+              <div className="flex items-center justify-between text-[11px] text-brand-text-secondary pt-1">
+                <span>Minimum 10 characters</span>
+                <span className={reason.length > 480 ? 'text-brand-warning font-semibold' : ''}>
+                  {reason.length} / 500 characters
+                </span>
+              </div>
             </div>
 
             <div className="p-3.5 bg-brand-blue-light/50 border border-brand-blue/15 rounded-2xl flex items-start gap-2.5 text-xs text-brand-blue">
@@ -196,7 +277,7 @@ export const ReEvaluation = () => {
                 type="submit"
                 variant="primary"
                 size="md"
-                disabled={!reason.trim()}
+                disabled={reason.trim().length < 10 || isSubmitting}
                 isLoading={isSubmitting}
                 icon={SendHorizontal}
                 iconPosition="right"

@@ -11,25 +11,42 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor: Attach appropriate JWT token if available
+// Request interceptor: Attach appropriate JWT token if available with strict role isolation
 apiClient.interceptors.request.use(
   (config) => {
     const facilitatorToken = localStorage.getItem('barabari_facilitator_token');
     const studentToken = localStorage.getItem('barabari_student_token');
+
+    const isStudentContext =
+      config.role === 'student' ||
+      config.url?.includes('/student') ||
+      (typeof window !== 'undefined' && window.location.pathname.startsWith('/student'));
 
     const isFacilitatorContext =
       config.role === 'facilitator' ||
       config.url?.includes('/facilitator') ||
       (typeof window !== 'undefined' && window.location.pathname.startsWith('/facilitator'));
 
-    if (isFacilitatorContext && facilitatorToken) {
-      config.headers.Authorization = `Bearer ${facilitatorToken}`;
-    } else if (!isFacilitatorContext && studentToken) {
+    if (isStudentContext) {
+      if (studentToken) {
+        config.headers.Authorization = `Bearer ${studentToken}`;
+      }
+    } else if (isFacilitatorContext) {
+      if (facilitatorToken) {
+        config.headers.Authorization = `Bearer ${facilitatorToken}`;
+      }
+    } else if (config.role === 'student') {
+      if (studentToken) {
+        config.headers.Authorization = `Bearer ${studentToken}`;
+      }
+    } else if (config.role === 'facilitator') {
+      if (facilitatorToken) {
+        config.headers.Authorization = `Bearer ${facilitatorToken}`;
+      }
+    } else if (studentToken) {
       config.headers.Authorization = `Bearer ${studentToken}`;
     } else if (facilitatorToken) {
       config.headers.Authorization = `Bearer ${facilitatorToken}`;
-    } else if (studentToken) {
-      config.headers.Authorization = `Bearer ${studentToken}`;
     }
     return config;
   },
@@ -47,11 +64,28 @@ apiClient.interceptors.response.use(
     if (status === 400) {
       userMessage = backendMsg || 'Invalid request parameters provided.';
     } else if (status === 401) {
-      userMessage = backendMsg || 'Invalid email or password.';
+      userMessage = backendMsg || 'Session expired or invalid credentials.';
       console.warn('[API Client] Unauthorized request (401).');
-      // If facilitator request is unauthorized (and not a login attempt), dispatch session expired notice
-      if (error.config?.url?.includes('/facilitator') && !error.config?.url?.includes('/login')) {
-        window.dispatchEvent(new CustomEvent('barabari_facilitator_session_expired'));
+      const isLoginOrRegister =
+        error.config?.url?.includes('/login') || error.config?.url?.includes('/register');
+
+      if (!isLoginOrRegister) {
+        const isStudentReq =
+          error.config?.role === 'student' ||
+          error.config?.url?.includes('/student') ||
+          (typeof window !== 'undefined' && window.location.pathname.startsWith('/student'));
+
+        const isFacilitatorReq =
+          error.config?.role === 'facilitator' ||
+          error.config?.url?.includes('/facilitator') ||
+          (typeof window !== 'undefined' && window.location.pathname.startsWith('/facilitator'));
+
+        if (isStudentReq) {
+          window.dispatchEvent(new CustomEvent('barabari_student_session_expired'));
+        }
+        if (isFacilitatorReq) {
+          window.dispatchEvent(new CustomEvent('barabari_facilitator_session_expired'));
+        }
       }
     } else if (status === 403) {
       userMessage = backendMsg || 'You do not have permission to perform this operation.';

@@ -42,6 +42,16 @@ function handleControllerError(res, error) {
     return fail(res, 400, error.name === 'CastError' ? 'Invalid request data' : error.message)
   }
 
+  if (
+    error?.name === 'MongooseError' ||
+    (error?.message && (
+      error.message.includes('buffering timed out') ||
+      error.message.includes('before initial connection is complete')
+    ))
+  ) {
+    return fail(res, 503, 'Database service is unavailable')
+  }
+
   console.error(error)
   return fail(res, 500, 'Internal server error')
 }

@@ -1,6 +1,7 @@
 const express = require('express')
 const authMiddleware = require('../middleware/authMiddleware')
 const roleMiddleware = require('../middleware/roleMiddleware')
+const requireDatabase = require('../middleware/dbCheckMiddleware')
 const {
   createEvaluation,
   generateAiDraft,
@@ -11,7 +12,9 @@ const {
 
 const router = express.Router()
 
-router.use(authMiddleware)
+router.use('/submissions/:submissionId', authMiddleware, requireDatabase)
+router.use('/evaluations', authMiddleware, requireDatabase)
+
 router.post('/submissions/:submissionId/ai-draft', roleMiddleware('facilitator'), generateAiDraft)
 router.post('/submissions/:submissionId/evaluation', roleMiddleware('facilitator'), createEvaluation)
 router.get('/submissions/:submissionId/evaluation', getSubmissionEvaluation)

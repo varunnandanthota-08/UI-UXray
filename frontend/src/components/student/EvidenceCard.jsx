@@ -6,6 +6,7 @@ export const EvidenceCard = ({
   score,
   maxScore,
   evidence,
+  frameUrl,
   onViewSubmission
 }) => {
   if (!evidence || !evidence.available) {
@@ -13,12 +14,21 @@ export const EvidenceCard = ({
       <div className="p-4 bg-brand-surface rounded-2xl border border-dashed border-brand-border text-xs text-brand-text-secondary flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileCode className="w-4 h-4 text-brand-text-secondary" />
-          <span>{criterionTitle}</span>
+          <span className="font-semibold text-brand-text-primary">{criterionTitle}</span>
         </div>
-        <span className="italic">Evidence unavailable.</span>
+        <span className="italic text-brand-text-secondary">Evidence unavailable</span>
       </div>
     );
   }
+
+  const effectiveUrl = frameUrl || evidence.url || evidence.frameUrl;
+
+  const handleClick = (e) => {
+    if (onViewSubmission && !effectiveUrl) {
+      e.preventDefault();
+      onViewSubmission();
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-brand-border p-5 shadow-soft space-y-4">
@@ -76,13 +86,22 @@ export const EvidenceCard = ({
 
       {/* Footer CTA */}
       <div className="pt-2 flex justify-end">
-        <button
-          onClick={onViewSubmission}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-blue hover:text-brand-blue-dark py-1 px-2.5 rounded-lg hover:bg-brand-blue-light transition-colors"
-        >
-          <span>View Submission Frame</span>
-          <ExternalLink className="w-3.5 h-3.5" />
-        </button>
+        {effectiveUrl ? (
+          <a
+            href={effectiveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleClick}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-blue hover:text-brand-blue-dark py-1.5 px-3 rounded-xl hover:bg-brand-blue-light transition-colors"
+          >
+            <span>View Submission Frame</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-text-secondary/70 py-1.5 px-3 rounded-xl bg-gray-50 border border-gray-100">
+            <span>Frame link unavailable</span>
+          </span>
+        )}
       </div>
     </div>
   );

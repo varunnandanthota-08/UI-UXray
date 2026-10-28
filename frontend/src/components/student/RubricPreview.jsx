@@ -2,7 +2,7 @@ import React from 'react';
 import { Award, ShieldCheck, X } from 'lucide-react';
 import Badge from '../ui/Badge';
 
-export const RubricPreview = ({ rubric = [], maxScore = 20, isOpen, onClose }) => {
+export const RubricPreview = ({ rubric = [], isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
@@ -24,7 +24,7 @@ export const RubricPreview = ({ rubric = [], maxScore = 20, isOpen, onClose }) =
                 Evaluation Rubric
               </h3>
               <p className="text-xs text-brand-text-secondary mt-0.5">
-                Maximum Total: <span className="font-semibold text-brand-text-primary">{maxScore} Marks</span>
+                Criteria & Performance Expectations
               </p>
             </div>
           </div>
@@ -49,28 +49,23 @@ export const RubricPreview = ({ rubric = [], maxScore = 20, isOpen, onClose }) =
           <div className="divide-y divide-brand-border/60">
             {rubric.map((criterion, idx) => (
               <div key={criterion.id || idx} className="py-4 first:pt-0 last:pb-0 flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-brand-blue">
-                      0{idx + 1}
-                    </span>
-                    <h4 className="text-sm font-bold text-brand-text-primary">
-                      {criterion.name || criterion.title}
-                    </h4>
+                <div className="space-y-1 w-full">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-brand-blue">
+                        0{idx + 1}
+                      </span>
+                      <h4 className="text-sm font-bold text-brand-text-primary">
+                        {criterion.name || criterion.title}
+                      </h4>
+                    </div>
+                    <Badge variant="neutral" size="sm">
+                      Core Criterion
+                    </Badge>
                   </div>
                   <p className="text-xs text-brand-text-secondary leading-relaxed pl-6">
                     {criterion.description}
                   </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <Badge variant="blue" size="md">
-                    {criterion.maxMarks || criterion.marks || 5} Marks
-                  </Badge>
-                  {criterion.weight && (
-                    <span className="text-[10px] font-semibold text-brand-text-secondary block mt-1">
-                      Weightage: {criterion.weight}%
-                    </span>
-                  )}
                 </div>
               </div>
             ))}

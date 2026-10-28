@@ -667,6 +667,7 @@ const mockEvaluations = {
           available: true,
           source: 'Screen 1: Inspection Sheet',
           component: 'Tokens & Color Variables',
+          url: 'https://www.figma.com/file/barabari-screen-recreation-ananya?node-id=101%3A12',
           observations: [
             '✓ Color tokens mapped directly to 8 luminance steps',
             '✓ Semantic naming (bg-surface-elevated, text-subtle) matches production standard',
@@ -680,12 +681,13 @@ const mockEvaluations = {
         title: 'User Flow & State Fidelity',
         score: 4,
         maxScore: 5,
-        status: 'Competent',
+        status: 'Proficient',
         feedback: 'Primary flow accurately mapped, but secondary dismiss routes require clearer visual indicators.',
         evidence: {
           available: true,
           source: 'Screen 3: Sub-issue Drawer',
           component: 'Modal Header / Back Navigation',
+          url: 'https://www.figma.com/file/barabari-screen-recreation-ananya?node-id=103%3A45',
           observations: [
             '✓ Primary completion CTA is immediately visible and anchored',
             '✓ Main flow transitions smoothly to ticket overview',
@@ -705,6 +707,7 @@ const mockEvaluations = {
           available: true,
           source: 'Screen 2: Task Details View',
           component: 'Metadata Property Row',
+          url: 'https://www.figma.com/file/barabari-screen-recreation-ananya?node-id=102%3A88',
           observations: [
             '✓ 8px grid alignment strictly maintained across all vertical gutters',
             '✓ Typography scale conforms to 16px base with 1.4 line-height',
@@ -720,10 +723,13 @@ const mockEvaluations = {
         maxScore: 4,
         status: 'Exemplary',
         feedback: 'Flawless Figma page structure and canvas cleanliness. Side-by-side comparison made review efficient.',
+        isStrength: true,
+        actionType: 'strength',
         evidence: {
           available: true,
           source: 'Canvas Root',
           component: 'Frame Organization',
+          url: 'https://www.figma.com/file/barabari-screen-recreation-ananya?node-id=1%3A2',
           observations: [
             '✓ Frames systematically labelled: 01_Original vs 02_Recreation',
             '✓ All unused temporary layers purged prior to submission'
@@ -906,22 +912,112 @@ export const mockStudentService = {
   },
 
   getCourses: async () => {
-    return { success: true, data: mockCourses };
+    const submissions = getStoredSubmissions();
+    const courses = mockCourses.map((c) => {
+      const units = (c.units || []).map((u) => {
+        const sub = submissions.find((s) => s.assignmentId === u.assignmentId);
+        let draft = null;
+        try {
+          const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(`${STORAGE_KEYS.DRAFTS}${u.assignmentId}`) : null;
+          if (raw) draft = JSON.parse(raw);
+        } catch (_) {}
+
+        if (sub) {
+          const isPublished = (sub.status === 'PUBLISHED' || sub.status === 'APPROVED' || sub.evaluationStatus === 'FINALIZED') && Boolean(sub.evaluationId);
+          return {
+            ...u,
+            status: isPublished ? 'COMPLETED' : (u.status || 'CURRENT'),
+            assignmentStatus: isPublished ? 'PUBLISHED' : (sub.status || 'SUBMITTED'),
+            submissionId: sub.id,
+            submissionStatus: sub.status,
+            evaluationId: sub.evaluationId || null,
+            score: isPublished && sub.score !== null && sub.score !== undefined ? `${sub.score}/${sub.maxScore || 20}` : null
+          };
+        }
+        if (draft && (draft.figmaUrl || draft.artifactValues)) {
+          return {
+            ...u,
+            assignmentStatus: 'IN_PROGRESS',
+            hasDraft: true
+          };
+        }
+        return u;
+      });
+      return { ...c, units };
+    });
+    return { success: true, data: courses };
   },
 
   getCourse: async (courseId) => {
-    const course = mockCourses.find((c) => c.id === courseId) || mockCourses[0];
-    return { success: true, data: course };
+    const rawCourse = mockCourses.find((c) => c.id === courseId) || mockCourses[0];
+    const submissions = getStoredSubmissions();
+    const units = (rawCourse.units || []).map((u) => {
+      const sub = submissions.find((s) => s.assignmentId === u.assignmentId);
+      let draft = null;
+      try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(`${STORAGE_KEYS.DRAFTS}${u.assignmentId}`) : null;
+        if (raw) draft = JSON.parse(raw);
+      } catch (_) {}
+
+      if (sub) {
+        const isPublished = (sub.status === 'PUBLISHED' || sub.status === 'APPROVED' || sub.evaluationStatus === 'FINALIZED') && Boolean(sub.evaluationId);
+        return {
+          ...u,
+          status: isPublished ? 'COMPLETED' : (u.status || 'CURRENT'),
+          assignmentStatus: isPublished ? 'PUBLISHED' : (sub.status || 'SUBMITTED'),
+          submissionId: sub.id,
+          submissionStatus: sub.status,
+          evaluationId: sub.evaluationId || null,
+          score: isPublished && sub.score !== null && sub.score !== undefined ? `${sub.score}/${sub.maxScore || 20}` : null
+        };
+      }
+      if (draft && (draft.figmaUrl || draft.artifactValues)) {
+        return {
+          ...u,
+          assignmentStatus: 'IN_PROGRESS',
+          hasDraft: true
+        };
+      }
+      return u;
+    });
+    return { success: true, data: { ...rawCourse, units } };
   },
 
   getUnit: async (unitId) => {
+    const submissions = getStoredSubmissions();
     for (const course of mockCourses) {
       const unitIndex = course.units.findIndex((u) => u.id === unitId);
       if (unitIndex !== -1) {
-        const unit = course.units[unitIndex];
+        const rawUnit = course.units[unitIndex];
+        const sub = submissions.find((s) => s.assignmentId === rawUnit.assignmentId);
+        let draft = null;
+        try {
+          const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(`${STORAGE_KEYS.DRAFTS}${rawUnit.assignmentId}`) : null;
+          if (raw) draft = JSON.parse(raw);
+        } catch (_) {}
+
+        const isPublished = Boolean(sub && (sub.status === 'PUBLISHED' || sub.status === 'APPROVED' || sub.evaluationStatus === 'FINALIZED') && sub.evaluationId);
+        const unit = {
+          ...rawUnit,
+          status: isPublished ? 'COMPLETED' : rawUnit.status,
+          assignmentStatus: isPublished ? 'PUBLISHED' : (sub ? (sub.status || 'SUBMITTED') : (draft ? 'IN_PROGRESS' : rawUnit.assignmentStatus)),
+          submissionId: sub?.id || null,
+          submissionStatus: sub?.status || null,
+          evaluationId: sub?.evaluationId || null,
+          score: isPublished && sub.score !== null && sub.score !== undefined ? `${sub.score}/${sub.maxScore || 20}` : null
+        };
+
         const prevUnit = unitIndex > 0 ? course.units[unitIndex - 1] : null;
         const nextUnit = unitIndex < course.units.length - 1 ? course.units[unitIndex + 1] : null;
         const isLastUnit = unitIndex === course.units.length - 1;
+
+        const baseAsg = mockAssignments[unit.assignmentId] || mockAssignments['asg-4'];
+        const associatedAssignment = baseAsg ? {
+          ...baseAsg,
+          status: isPublished ? 'PUBLISHED' : (sub ? (sub.status || 'SUBMITTED') : (draft ? 'IN_PROGRESS' : baseAsg.status)),
+          submissionId: sub?.id || null,
+          evaluationId: sub?.evaluationId || null
+        } : null;
 
         return {
           success: true,
@@ -930,7 +1026,7 @@ export const mockStudentService = {
             courseId: course.id,
             courseTitle: course.title,
             coursePhase: course.phase,
-            associatedAssignment: mockAssignments[unit.assignmentId] || null,
+            associatedAssignment,
             previousUnit: prevUnit ? { id: prevUnit.id, unitNumber: prevUnit.unitNumber, title: prevUnit.title } : null,
             nextUnit: nextUnit ? { id: nextUnit.id, unitNumber: nextUnit.unitNumber, title: nextUnit.title } : null,
             isLastUnit
@@ -940,14 +1036,23 @@ export const mockStudentService = {
     }
     // Fallback to unit-4
     const course = mockCourses[0];
+    const sub4 = submissions.find((s) => s.assignmentId === 'asg-4');
+    const isPub4 = Boolean(sub4 && (sub4.status === 'PUBLISHED' || sub4.status === 'APPROVED') && sub4.evaluationId);
     return {
       success: true,
       data: {
         ...course.units[3],
+        status: isPub4 ? 'COMPLETED' : course.units[3].status,
+        assignmentStatus: isPub4 ? 'PUBLISHED' : (sub4 ? (sub4.status || 'SUBMITTED') : course.units[3].assignmentStatus),
         courseId: course.id,
         courseTitle: course.title,
         coursePhase: course.phase,
-        associatedAssignment: mockAssignments['asg-4'],
+        associatedAssignment: {
+          ...mockAssignments['asg-4'],
+          status: isPub4 ? 'PUBLISHED' : (sub4 ? (sub4.status || 'SUBMITTED') : mockAssignments['asg-4'].status),
+          submissionId: sub4?.id || null,
+          evaluationId: sub4?.evaluationId || null
+        },
         previousUnit: { id: 'unit-3', unitNumber: 3, title: 'UI Fundamentals' },
         nextUnit: { id: 'unit-5', unitNumber: 5, title: 'AI-Native Design' },
         isLastUnit: false
@@ -957,7 +1062,32 @@ export const mockStudentService = {
 
   getAssignment: async (assignmentId) => {
     const asg = mockAssignments[assignmentId] || mockAssignments['asg-4'];
-    return { success: true, data: asg };
+    const submissions = getStoredSubmissions();
+    const sub = submissions.find((s) => s.assignmentId === (asg?.id || assignmentId));
+    let draft = null;
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(`${STORAGE_KEYS.DRAFTS}${asg?.id || assignmentId}`) : null;
+      if (raw) draft = JSON.parse(raw);
+    } catch (_) {}
+
+    const isPublished = Boolean(sub && (sub.status === 'PUBLISHED' || sub.status === 'APPROVED' || sub.evaluationStatus === 'FINALIZED') && sub.evaluationId);
+
+    const mergedStatus = isPublished
+      ? 'PUBLISHED'
+      : sub
+      ? (sub.status || 'SUBMITTED')
+      : (draft ? 'IN_PROGRESS' : (asg?.status || 'NOT_STARTED'));
+
+    return {
+      success: true,
+      data: {
+        ...asg,
+        status: mergedStatus,
+        submissionId: sub?.id || null,
+        submissionStatus: sub?.status || null,
+        evaluationId: sub?.evaluationId || null
+      }
+    };
   },
 
   getAssignmentRubric: async (assignmentId) => {
@@ -974,7 +1104,40 @@ export const mockStudentService = {
   },
 
   getStudentAssignments: async () => {
-    return { success: true, data: Object.values(mockAssignments) };
+    const submissions = getStoredSubmissions();
+    const assignmentsList = Object.values(mockAssignments).map((asg) => {
+      const sub = submissions.find((s) => s.assignmentId === asg.id);
+      if (sub) {
+        const isPublished = (sub.status === 'PUBLISHED' || sub.status === 'APPROVED') && Boolean(sub.evaluationId);
+        return {
+          ...asg,
+          status: isPublished ? 'PUBLISHED' : (sub.status || 'SUBMITTED'),
+          submissionId: sub.id,
+          submissionStatus: sub.status,
+          evaluationId: sub.evaluationId || null
+        };
+      }
+      try {
+        const rawDraft = typeof localStorage !== 'undefined' ? localStorage.getItem(`${STORAGE_KEYS.DRAFTS}${asg.id}`) : null;
+        if (rawDraft) {
+          return {
+            ...asg,
+            status: 'IN_PROGRESS',
+            hasDraft: true
+          };
+        }
+      } catch (_) {}
+      return asg;
+    });
+    return { success: true, data: assignmentsList };
+  },
+
+  getMySubmission: async (assignmentId) => {
+    const submissions = getStoredSubmissions();
+    const matching = submissions
+      .filter((s) => s.assignmentId === assignmentId)
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    return { success: true, data: matching[0] || null };
   },
 
   saveDraft: async (assignmentId, draftData) => {
@@ -1004,9 +1167,28 @@ export const mockStudentService = {
     const submissions = getStoredSubmissions();
     const assignment = mockAssignments[payload.assignmentId] || mockAssignments['asg-4'];
 
+    // Prevent accidental duplicate submissions on rapid double clicks or quick retries
+    const recentDuplicate = submissions.find(
+      (s) =>
+        s.assignmentId === payload.assignmentId &&
+        s.artifacts?.figmaUrl === (payload.figmaUrl || payload.artifacts?.figmaUrl) &&
+        Date.now() - new Date(s.submittedAt).getTime() < 5000
+    );
+    if (recentDuplicate) {
+      return {
+        success: true,
+        data: recentDuplicate,
+        message: 'Assignment submitted successfully.'
+      };
+    }
+
+    const previousAttempts = submissions.filter((s) => s.assignmentId === payload.assignmentId);
+    const attemptNumber = previousAttempts.length + 1;
+
     const newSubmissionId = `sub-${Date.now().toString().slice(-6)}`;
     const newSubmission = {
       id: newSubmissionId,
+      submissionId: newSubmissionId,
       assignmentId: payload.assignmentId,
       assignmentTitle: assignment.title,
       courseId: assignment.courseId,
@@ -1014,9 +1196,11 @@ export const mockStudentService = {
       unitId: assignment.unitId,
       unitTitle: assignment.unitTitle,
       submittedAt: new Date().toISOString(),
-      status: 'PROCESSING', // PROCESSING / UNDER_REVIEW
+      status: 'PROCESSING', // PROCESSING / UNDER_REVIEW / SUBMITTED
       score: null,
-      maxScore: assignment.maxScore,
+      maxScore: assignment.maxScore || assignment.maxMarks || 20,
+      attempt: attemptNumber,
+      attemptNumber: attemptNumber,
       completedRequirements: payload.completedRequirements || ['Prototype Navigation', 'Meaningful Micro-motion', 'Interactive State Decision'],
       incompleteRequirements: payload.incompleteRequirements || ['Responsive Layout Stability', 'Public Figma Presentation Link'],
       completionPercentage: payload.completionPercentage ?? 60,
@@ -1061,7 +1245,20 @@ export const mockStudentService = {
     };
 
     const updated = [newSubmission, ...submissions];
-    saveStoredSubmissions(updated);
+    try {
+      saveStoredSubmissions(updated);
+    } catch (saveErr) {
+      console.error('Failed to persist submission to storage:', saveErr);
+      const err = new Error('Failed to persist submission record');
+      err.response = { status: 500, data: { message: 'Failed to persist submission record' } };
+      throw err;
+    }
+
+    // Update in-memory assignment status
+    if (mockAssignments[payload.assignmentId]) {
+      mockAssignments[payload.assignmentId].status = 'SUBMITTED';
+    }
+
     // Clear draft after submit
     try {
       localStorage.removeItem(`${STORAGE_KEYS.DRAFTS}${payload.assignmentId}`);
@@ -1076,11 +1273,8 @@ export const mockStudentService = {
 
   getSubmission: async (submissionId) => {
     const submissions = getStoredSubmissions();
-    let sub = submissions.find((s) => s.id === submissionId);
-    if (!sub) {
-      sub = submissions[0];
-    }
-    return { success: true, data: sub };
+    const sub = submissions.find((s) => s.id === submissionId || s.submissionId === submissionId);
+    return { success: true, data: sub || null };
   },
 
   getStudentSubmissions: async () => {
@@ -1089,12 +1283,18 @@ export const mockStudentService = {
   },
 
   getEvaluation: async (evaluationId) => {
-    const evaluation = mockEvaluations[evaluationId] || mockEvaluations['eval-asg-3'];
+    const evaluation = mockEvaluations[evaluationId] || Object.values(mockEvaluations).find((e) => e.submissionId === evaluationId || e.id === evaluationId) || null;
     return { success: true, data: evaluation };
   },
 
   requestReEvaluation: async (payload) => {
     const reEvaluations = getStoredReEvaluations();
+    const existing = reEvaluations[payload.evaluationId];
+    if (existing && ['REQUESTED', 'UNDER_REVIEW', 'pending', 'under_review'].includes(existing.status)) {
+      const err = new Error('An active re-evaluation request already exists for this evaluation');
+      err.response = { status: 409, data: { message: 'An active re-evaluation request already exists for this evaluation' } };
+      throw err;
+    }
     const reEvaluationId = `reeval-${Date.now().toString().slice(-6)}`;
     const record = {
       id: reEvaluationId,
@@ -1118,7 +1318,7 @@ export const mockStudentService = {
 
   getReEvaluation: async (evaluationId) => {
     const reEvaluations = getStoredReEvaluations();
-    const record = reEvaluations[evaluationId] || null;
+    const record = reEvaluations[evaluationId] || Object.values(reEvaluations).find((r) => r.evaluationId === evaluationId || r.submissionId === evaluationId || r.id === evaluationId) || null;
     return { success: true, data: record };
   }
 };

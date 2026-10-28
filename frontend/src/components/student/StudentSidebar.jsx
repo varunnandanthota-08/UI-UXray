@@ -1,23 +1,48 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import studentApi, { resolveAssignmentAction } from '../../api/studentApi';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   BookOpen, 
   FileEdit, 
   SendHorizontal, 
-  Award, 
   HelpCircle,
   Sparkles,
   User
 } from 'lucide-react';
 
 export const StudentSidebar = () => {
+  const [submissions, setSubmissions] = useState([]);
+  const [draft, setDraft] = useState(null);
+
+  useEffect(() => {
+    studentApi.getStudentSubmissions().then((res) => {
+      setSubmissions(res.data || []);
+    }).catch(() => {});
+    studentApi.getDraft('asg-4').then((res) => {
+      setDraft(res?.data || null);
+    }).catch(() => {});
+  }, []);
+
+  const action = resolveAssignmentAction({
+    assignmentId: 'asg-4',
+    submissions,
+    draft
+  });
+
+  const sidebarButtonLabel = action.isEvaluated
+    ? 'View Evaluation →'
+    : action.isSubmitted
+    ? 'View Submission →'
+    : action.hasDraft
+    ? 'Continue Work →'
+    : 'Submit Work →';
+
   const navItems = [
     { label: 'Dashboard', path: '/student/dashboard', icon: LayoutDashboard },
     { label: 'My Courses', path: '/student/courses', icon: BookOpen },
     { label: 'Current Assignment', path: '/student/assignments/asg-4', icon: FileEdit },
     { label: 'My Submissions', path: '/student/submissions', icon: SendHorizontal },
-    { label: 'Evaluations', path: '/student/evaluations/eval-asg-3', icon: Award },
     { label: 'Profile', path: '/student/profile', icon: User },
   ];
 
@@ -63,10 +88,10 @@ export const StudentSidebar = () => {
             Due: 22 Sep 2026 • 20 Marks
           </p>
           <NavLink
-            to="/student/assignments/asg-4/submit"
+            to={action.link}
             className="mt-3.5 w-full flex items-center justify-center text-xs font-semibold py-2 px-3 bg-brand-yellow text-brand-text-primary hover:bg-brand-yellow-hover rounded-xl shadow-sm transition-all"
           >
-            Submit Work →
+            {sidebarButtonLabel}
           </NavLink>
         </div>
       </div>

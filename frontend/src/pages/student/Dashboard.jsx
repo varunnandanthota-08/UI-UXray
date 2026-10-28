@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import studentApi from '../../api/studentApi';
+import studentApi, { resolveAssignmentAction } from '../../api/studentApi';
 import AssignmentDonutChart from '../../components/student/AssignmentDonutChart';
 import UnitProgressTimeline from '../../components/student/UnitProgressTimeline';
 import Card from '../../components/ui/Card';
@@ -14,24 +14,29 @@ import {
 } from 'lucide-react';
 
 export const Dashboard = () => {
-  const { student } = useAuth();
+  const { student, isAuthenticated } = useAuth();
   const [courses, setCourses] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [activeDraft, setActiveDraft] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [courseRes, asgRes, subRes] = await Promise.all([
+        const [courseRes, asgRes, subRes, draftRes] = await Promise.all([
           studentApi.getCourses(),
           studentApi.getStudentAssignments(),
           studentApi.getStudentSubmissions(),
+          studentApi.getDraft('asg-4')
         ]);
         setCourses(courseRes.data || []);
         setAssignments(asgRes.data || []);
         setSubmissions(subRes.data || []);
+        setActiveDraft(draftRes?.data || null);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -40,7 +45,7 @@ export const Dashboard = () => {
     };
 
     fetchData();
-  }, []);
+  }, [isAuthenticated]);
 
   if (loading) {
     return (
@@ -61,25 +66,48 @@ export const Dashboard = () => {
 
   const primaryCourse = courses[0] || {};
   const units = primaryCourse.units || [];
-  const activeAssignment = assignments.find((a) => a.id === 'asg-4') || assignments[3] || {};
-  const evaluatedSubmissions = submissions.filter((s) => s.status === 'PUBLISHED');
+  const activeAssignment = assignments.find((a) => a.id === 'asg-4') || assignments[3] || assignments[0] || {};
+  const asg5 = assignments.find((a) => a.id === 'asg-5') || assignments[4] || {};
+  const asg6 = assignments.find((a) => a.id === 'asg-6') || assignments[5] || {};
+
+  // Resolve active sprint submission & draft state using shared logic
+  const activeAction = resolveAssignmentAction({
+    assignmentId: activeAssignment.id || 'asg-4',
+    submissions,
+    draft: activeDraft
+  });
+
+  const heroActionLabel = activeAction.label;
+  const heroActionLink = activeAction.link;
+  const activeStatusLabel = activeAction.badgeLabel;
+  const activeStatusVariant = activeAction.badgeVariant;
+
+  const evaluatedSubmissions = submissions.filter((s) => s.status === 'PUBLISHED' || s.status === 'APPROVED');
+  const eval1 = evaluatedSubmissions[0] || {};
+  const eval2 = evaluatedSubmissions[1] || {};
+  const eval3 = evaluatedSubmissions[2] || {};
+
+  const evaluatedCount = evaluatedSubmissions.length;
+  const underReviewCount = submissions.filter((s) => s.status === 'SUBMITTED' || s.status === 'PROCESSING' || s.status === 'UNDER_REVIEW' || s.status === 'AUTOMATED_ANALYSIS_COMPLETE').length;
+  const inProgressCount = activeAction.hasDraft && !activeAction.isSubmitted ? 1 : 0;
+  const notStartedCount = Math.max(0, 6 - evaluatedCount - underReviewCount - inProgressCount);
 
   // Metrics matching Facilitator Dashboard analytics
   const metrics = [
     { label: 'Total Assignments', value: 6, color: 'text-brand-text-primary' },
-    { label: 'Completed', value: 3, color: 'text-brand-blue' },
-    { label: 'In Progress', value: 1, color: 'text-brand-warning' },
-    { label: 'Not Started', value: 2, color: 'text-brand-text-secondary' },
-    { label: 'Under Evaluation', value: 1, color: 'text-[#946F00]' },
-    { label: 'Published Results', value: evaluatedSubmissions.length || 2, color: 'text-brand-success' }
+    { label: 'Completed', value: evaluatedCount + underReviewCount, color: 'text-brand-blue' },
+    { label: 'In Progress', value: inProgressCount, color: 'text-brand-warning' },
+    { label: 'Not Started', value: notStartedCount, color: 'text-brand-text-secondary' },
+    { label: 'Under Evaluation', value: underReviewCount, color: 'text-[#946F00]' },
+    { label: 'Published Results', value: evaluatedCount, color: 'text-brand-success' }
   ];
 
   // Donut chart segments
   const chartData = [
-    { label: 'Completed', count: 3, color: '#344499' },
-    { label: 'In Progress', count: 1, color: '#FFCC33' },
-    { label: 'Under Evaluation', count: 1, color: '#C88700' },
-    { label: 'Not Started', count: 2, color: '#D5D5CE' }
+    { label: 'Completed', count: evaluatedCount, color: '#344499' },
+    { label: 'In Progress', count: inProgressCount, color: '#FFCC33' },
+    { label: 'Under Evaluation', count: underReviewCount, color: '#C88700' },
+    { label: 'Not Started', count: notStartedCount, color: '#D5D5CE' }
   ];
 
   return (
@@ -109,9 +137,9 @@ export const Dashboard = () => {
               Edit Profile
             </Button>
           </Link>
-          <Link to={`/student/assignments/${activeAssignment.id || 'asg-4'}/submit`}>
+          <Link to={heroActionLink}>
             <Button variant="primary" size="md" icon={ArrowRight} iconPosition="right">
-              Continue Active Sprint
+              {heroActionLabel}
             </Button>
           </Link>
         </div>
@@ -221,25 +249,25 @@ export const Dashboard = () => {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-brand-text-primary">
-                      One Clickable Prototype with Motion
+                      {activeAssignment.title || 'One Clickable Prototype with Motion'}
                     </span>
-                    <Badge variant="IN_PROGRESS" size="sm" dot>
-                      IN PROGRESS
+                    <Badge variant={activeStatusVariant} size="sm" dot={activeStatusVariant !== 'NOT_STARTED'}>
+                      {activeStatusLabel}
                     </Badge>
                   </div>
                   <p className="text-[11px] text-brand-text-secondary">
-                    UI/UX Design • Due: 22 Sep 2026 • 20 Marks
+                    UI/UX Design • Due: {activeAssignment.dueDate || activeAssignment.deadline || '22 Sep 2026'} • {activeAssignment.maxScore || 20} Marks
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Link to="/student/assignments/asg-4">
+                  <Link to={`/student/assignments/${activeAssignment.id || 'asg-4'}`}>
                     <Button variant="outline" size="sm">
                       Specs
                     </Button>
                   </Link>
-                  <Link to="/student/assignments/asg-4/submit">
+                  <Link to={heroActionLink}>
                     <Button variant="primary" size="sm" icon={ArrowRight} iconPosition="right">
-                      Open Assignment
+                      {heroActionLabel}
                     </Button>
                   </Link>
                 </div>
@@ -260,7 +288,7 @@ export const Dashboard = () => {
                     UI/UX Design • Due: 05 Oct 2026 • 20 Marks
                   </p>
                 </div>
-                <Link to="/student/assignments/asg-5">
+                <Link to={`/student/assignments/${asg5.id || 'asg-5'}`}>
                   <Button variant="outline" size="sm" icon={ArrowRight} iconPosition="right">
                     Open Assignment
                   </Button>
@@ -282,7 +310,7 @@ export const Dashboard = () => {
                     UI/UX Design • Due: 20 Oct 2026 • 25 Marks
                   </p>
                 </div>
-                <Link to="/student/assignments/asg-6">
+                <Link to={`/student/assignments/${asg6.id || 'asg-6'}`}>
                   <Button variant="outline" size="sm" icon={ArrowRight} iconPosition="right">
                     Open Assignment
                   </Button>
@@ -334,7 +362,7 @@ export const Dashboard = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-brand-blue text-sm">18 / 20</span>
-                    <Link to="/student/evaluations/eval-asg-3" className="text-brand-blue font-semibold hover:underline text-[11px]">
+                    <Link to={`/student/evaluations/${eval1.evaluationId || eval1.id || 'eval-asg-3'}`} className="text-brand-blue font-semibold hover:underline text-[11px]">
                       Inspect →
                     </Link>
                   </div>
@@ -356,7 +384,7 @@ export const Dashboard = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-brand-blue text-sm">17 / 20</span>
-                    <Link to="/student/evaluations/eval-asg-2" className="text-brand-blue font-semibold hover:underline text-[11px]">
+                    <Link to={`/student/evaluations/${eval2.evaluationId || eval2.id || 'eval-asg-2'}`} className="text-brand-blue font-semibold hover:underline text-[11px]">
                       Inspect →
                     </Link>
                   </div>
@@ -378,7 +406,7 @@ export const Dashboard = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-brand-blue text-sm">15 / 20</span>
-                    <Link to="/student/evaluations/eval-asg-1" className="text-brand-blue font-semibold hover:underline text-[11px]">
+                    <Link to={`/student/evaluations/${eval3.evaluationId || eval3.id || 'eval-asg-1'}`} className="text-brand-blue font-semibold hover:underline text-[11px]">
                       Inspect →
                     </Link>
                   </div>

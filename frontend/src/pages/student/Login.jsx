@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight, AlertCircle } from 'lucide-react';
 import Button from '../../components/ui/Button';
 
 export const Login = () => {
   const [email, setEmail] = useState('ananya.sharma@barabaricollective.in');
   const [password, setPassword] = useState('password123');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e?.preventDefault();
     setIsLoading(true);
+    setError(null);
     try {
       await login(email, password);
       navigate('/student/dashboard');
     } catch (err) {
       console.error('Login error:', err);
+      setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -26,11 +29,13 @@ export const Login = () => {
 
   const handleDemoLogin = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      await login('ananya.sharma@barabaricollective.in', 'demo');
+      await login('ananya.sharma@barabaricollective.in', 'password123');
       navigate('/student/dashboard');
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Authentication failed.');
     } finally {
       setIsLoading(false);
     }
@@ -93,6 +98,14 @@ export const Login = () => {
             Or continue with credentials
           </span>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-xs text-red-700">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Standard Form */}
         <form onSubmit={handleLogin} className="space-y-4">

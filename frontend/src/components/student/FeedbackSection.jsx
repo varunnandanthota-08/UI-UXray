@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle2, ArrowRight, Info, Wrench, MessageSquare } from 'lucide-react';
 
-export const FeedbackSection = ({ feedbackSections, facilitator }) => {
+export const FeedbackSection = ({ feedbackSections, facilitator, showFacilitatorComments = true }) => {
   if (!feedbackSections) return null;
 
   return (
@@ -24,7 +24,7 @@ export const FeedbackSection = ({ feedbackSections, facilitator }) => {
         </div>
       </div>
 
-      {/* What Needs Improvement + Why It Matters + Suggested Improvement */}
+      {/* What Needs Improvement + Why It Matters */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* What to Improve */}
         <div className="bg-white rounded-3xl border border-brand-border p-6 md:p-7 shadow-soft space-y-4">
@@ -84,8 +84,8 @@ export const FeedbackSection = ({ feedbackSections, facilitator }) => {
         </div>
       )}
 
-      {/* Facilitator Comments */}
-      {feedbackSections.facilitatorComments && (
+      {/* Facilitator Comments (when enabled) */}
+      {showFacilitatorComments && feedbackSections.facilitatorComments && (
         <div className="bg-brand-blue-light/50 border border-brand-blue/20 rounded-3xl p-6 md:p-7 shadow-soft">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 text-brand-blue font-bold text-xs uppercase tracking-wider">

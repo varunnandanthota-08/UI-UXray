@@ -5,6 +5,7 @@ import studentApi from '../../api/studentApi';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import { CardSkeleton } from '../../components/ui/Skeleton';
+import EmptyState from '../../components/ui/EmptyState';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -24,11 +25,13 @@ export const SubmitAssignment = () => {
 
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftSavedMsg, setDraftSavedMsg] = useState(null);
   const [submissionResult, setSubmissionResult] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
 
   // Form State
   const [figmaUrl, setFigmaUrl] = useState('https://www.figma.com/proto/barabari-prototype-demo-ananya');
@@ -58,13 +61,18 @@ export const SubmitAssignment = () => {
     const fetchAssignmentAndDraft = async () => {
       try {
         setLoading(true);
+        setError(null);
         const [asgRes, draftRes] = await Promise.all([
           studentApi.getAssignment(assignmentId),
           studentApi.getDraft(assignmentId)
         ]);
 
-        const asgData = asgRes.data;
-        setAssignment(asgData);
+        const asgData = asgRes?.data;
+        if (!asgData) {
+          setError('Assignment not found');
+        } else {
+          setAssignment(asgData);
+        }
 
         // Populate initial completion map from assignment requirements
         if (asgData?.requirements) {
@@ -85,6 +93,7 @@ export const SubmitAssignment = () => {
         }
       } catch (err) {
         console.error('Error fetching assignment or draft:', err);
+        setError(err.message || 'Failed to load assignment workspace');
       } finally {
         setLoading(false);
       }
@@ -93,11 +102,34 @@ export const SubmitAssignment = () => {
     fetchAssignmentAndDraft();
   }, [assignmentId]);
 
-  if (loading || !assignment) {
+  if (loading) {
     return (
       <div className="space-y-6">
         <div className="h-16 bg-white rounded-2xl animate-pulse" />
         <CardSkeleton />
+      </div>
+    );
+  }
+
+  if (error || !assignment) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div>
+          <Link
+            to="/student/courses"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>← Back to Courses</span>
+          </Link>
+        </div>
+        <EmptyState
+          icon={AlertCircle}
+          title="Assignment not found"
+          description={error || "We couldn't locate the requested assignment to submit."}
+          actionLabel="View All Courses"
+          onAction={() => { window.location.href = '/student/courses'; }}
+        />
       </div>
     );
   }
@@ -156,7 +188,9 @@ export const SubmitAssignment = () => {
 
   // Submit Handler (Supports PARTIAL SUBMISSION!)
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const payload = {
         assignmentId: assignment.id,
@@ -169,10 +203,15 @@ export const SubmitAssignment = () => {
       };
 
       const res = await studentApi.submitAssignment(payload);
-      setSubmissionResult(res.data);
-      setStep(5);
+      if (res?.data) {
+        setSubmissionResult(res.data);
+        setStep(5);
+      } else {
+        setSubmitError('Failed to record submission. Please retry.');
+      }
     } catch (err) {
       console.error('Submission failed:', err);
+      setSubmitError(err.response?.data?.message || err.message || 'Submission failed. Please check your network and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -636,6 +675,13 @@ export const SubmitAssignment = () => {
               </p>
             </div>
 
+            {submitError && (
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed font-medium">{submitError}</p>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="pt-4 flex items-center justify-between border-t border-brand-border">
               <Button variant="outline" size="md" onClick={() => setStep(3)}>
@@ -644,7 +690,7 @@ export const SubmitAssignment = () => {
               <Button
                 variant="primary"
                 size="md"
-                disabled={!isValidFigmaUrl}
+                disabled={!isValidFigmaUrl || isSubmitting}
                 isLoading={isSubmitting}
                 onClick={handleSubmit}
                 icon={FileCheck2}

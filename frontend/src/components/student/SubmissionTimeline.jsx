@@ -5,7 +5,8 @@ import Badge from '../ui/Badge';
  * Maps technical backend status to student-facing stage and friendly label
  */
 export const getStatusMeta = (status) => {
-  switch (status) {
+  const s = String(status || '').toUpperCase();
+  switch (s) {
     case 'DRAFT':
       return { label: 'Draft', variant: 'neutral', activeIndex: 0 };
     case 'SUBMITTED':
@@ -16,9 +17,11 @@ export const getStatusMeta = (status) => {
       return { label: 'Automated Checks Finished', variant: 'blue', activeIndex: 2 };
     case 'NEEDS_REVIEW':
     case 'FACILITATOR_REVIEWED':
+    case 'UNDER_REVIEW':
       return { label: 'In Facilitator Review', variant: 'yellow', activeIndex: 3 };
     case 'APPROVED':
     case 'PUBLISHED':
+    case 'EVALUATED':
       return { label: 'Evaluation Published', variant: 'success', activeIndex: 4 };
     case 'FAILED':
       return { label: 'Needs Student Attention', variant: 'error', activeIndex: 1 };

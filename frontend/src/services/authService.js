@@ -285,9 +285,10 @@ export const authService = {
    * Fetch current user profile via JWT
    * Real endpoint: GET /api/auth/me
    */
-  getMe: async () => {
+  getMe: async (role) => {
     try {
-      const response = await apiClient.get('/auth/me');
+      const config = role ? { role } : {};
+      const response = await apiClient.get('/auth/me', config);
       return response.data?.user || null;
     } catch (error) {
       if (isNetworkError(error)) {

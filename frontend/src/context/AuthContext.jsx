@@ -5,8 +5,34 @@ import authService from '../services/authService';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [student, setStudent] = useState(null);
+  const [student, setStudent] = useState(() => {
+    const token = localStorage.getItem('barabari_student_token');
+    const storedUser = localStorage.getItem('barabari_active_student_user');
+    if (token && storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
+
+  const logout = () => {
+    localStorage.removeItem('barabari_student_token');
+    localStorage.removeItem('barabari_active_student_user');
+    sessionStorage.setItem('barabari_logged_out', 'true');
+    setStudent(null);
+  };
+
+  useEffect(() => {
+    const handleExpired = () => {
+      logout();
+    };
+    window.addEventListener('barabari_student_session_expired', handleExpired);
+    return () => window.removeEventListener('barabari_student_session_expired', handleExpired);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('barabari_student_token');
@@ -14,7 +40,7 @@ export const AuthProvider = ({ children }) => {
 
     if (token) {
       // Validate with backend GET /api/auth/me
-      authService.getMe()
+      authService.getMe('student')
         .then((beUser) => {
           if (beUser && beUser.role === 'student') {
             const formatted = {
@@ -32,63 +58,65 @@ export const AuthProvider = ({ children }) => {
             try {
               setStudent(JSON.parse(activeStored));
             } catch {
-              // fallback
+              logout();
             }
+          } else {
+            logout();
           }
         })
         .catch((err) => {
           console.warn('[AuthContext] Session validation failed:', err);
-          if (err?.response?.status === 401) {
-            localStorage.removeItem('barabari_student_token');
-            localStorage.removeItem('barabari_active_student_user');
-            setStudent(null);
+          if (err?.response?.status === 401 || err?.response?.status === 403) {
+            logout();
           } else if (activeStored) {
             try {
               setStudent(JSON.parse(activeStored));
-            } catch {}
+            } catch {
+              logout();
+            }
           }
         })
         .finally(() => setLoading(false));
-    } else if (activeStored && !sessionStorage.getItem('barabari_logged_out')) {
-      try {
-        setStudent(JSON.parse(activeStored));
-      } catch {}
-      setLoading(false);
     } else {
+      setStudent(null);
       setLoading(false);
     }
   }, []);
 
   const login = async (_email, _password, userObj = null, token = null) => {
     sessionStorage.removeItem('barabari_logged_out');
-    if (token) {
-      localStorage.setItem('barabari_student_token', token);
-    }
-    if (userObj) {
-      const activeStudent = {
-        id: userObj.id || userObj._id || 'stu-001',
-        studentId: userObj.studentId || userObj.id || 'BC-2026-088',
-        name: userObj.name || 'Ananya Sharma',
-        email: userObj.email || _email,
-        cohort: 'Cohort 4 • UI/UX Product Design',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-        role: 'Student'
-      };
-      localStorage.setItem('barabari_active_student_user', JSON.stringify(activeStudent));
-      setStudent(activeStudent);
-      return activeStudent;
-    }
-    const profileRes = await studentApi.getStudentProfile();
-    const active = profileRes?.data || { name: 'Ananya Sharma', email: _email };
-    setStudent(active);
-    return active;
-  };
 
-  const logout = () => {
-    localStorage.removeItem('barabari_student_token');
-    localStorage.removeItem('barabari_active_student_user');
-    sessionStorage.setItem('barabari_logged_out', 'true');
-    setStudent(null);
+    let activeToken = token;
+    let activeUser = userObj;
+
+    // If token or userObj not provided, authenticate via authService
+    if (!activeToken || !activeUser) {
+      const authResult = await authService.login({
+        email: _email,
+        password: _password,
+        role: 'student'
+      });
+      activeToken = authResult.token;
+      activeUser = authResult.user;
+    }
+
+    if (activeToken) {
+      localStorage.setItem('barabari_student_token', activeToken);
+    }
+
+    const activeStudent = {
+      id: activeUser?.id || activeUser?._id || 'stu-001',
+      studentId: activeUser?.studentId || activeUser?.id || 'BC-2026-088',
+      name: activeUser?.name || 'Ananya Sharma',
+      email: activeUser?.email || _email,
+      cohort: 'Cohort 4 • UI/UX Product Design',
+      avatar: activeUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+      role: 'Student'
+    };
+
+    localStorage.setItem('barabari_active_student_user', JSON.stringify(activeStudent));
+    setStudent(activeStudent);
+    return activeStudent;
   };
 
   const updateProfile = async (profileData) => {
@@ -99,7 +127,7 @@ export const AuthProvider = ({ children }) => {
     return res;
   };
 
-  const isAuthenticated = !!student;
+  const isAuthenticated = !!student && !!localStorage.getItem('barabari_student_token');
 
   return (
     <AuthContext.Provider

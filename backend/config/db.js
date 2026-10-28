@@ -1,6 +1,20 @@
 const mongoose = require('mongoose')
 
+mongoose.set('bufferCommands', false)
+
 let databaseConnected = false
+
+mongoose.connection.on('connected', () => {
+  databaseConnected = true
+})
+
+mongoose.connection.on('disconnected', () => {
+  databaseConnected = false
+})
+
+mongoose.connection.on('error', () => {
+  databaseConnected = false
+})
 
 async function connectDB() {
   if (!process.env.MONGODB_URI) {
@@ -16,7 +30,7 @@ async function connectDB() {
   } catch (error) {
     databaseConnected = false
     console.error(
-      `MongoDB connection failed: name=${error.name || 'UnknownError'} code=${error.code ?? 'N/A'}`,
+      `MongoDB connection failed: name=${error.name || 'UnknownError'} code=${error.code ?? 'N/A'} reason=${error.reason?.type || error.message || 'Unknown'}`,
     )
     return false
   }

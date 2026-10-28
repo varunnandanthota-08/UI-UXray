@@ -63,7 +63,9 @@ export const Submissions = () => {
         <div className="space-y-4">
           {submissions.map((sub) => {
             const meta = getStatusMeta(sub.status);
-            const isPublished = sub.status === 'PUBLISHED' || sub.status === 'APPROVED';
+            const isPublished = (sub.status === 'PUBLISHED' || sub.status === 'APPROVED' || sub.evaluationStatus === 'FINALIZED') && Boolean(sub.evaluationId);
+            const hasScore = isPublished && sub.score !== null && sub.score !== undefined;
+            const attemptNumber = sub.attempt || sub.attemptNumber || 1;
 
             return (
               <div
@@ -78,6 +80,9 @@ export const Submissions = () => {
                     <Badge variant={meta.variant} size="sm" dot>
                       {meta.label}
                     </Badge>
+                    <span className="text-[11px] font-semibold text-brand-text-secondary bg-[#F8F9F8] px-2 py-0.5 rounded-md border border-brand-border/60">
+                      Attempt {attemptNumber}
+                    </span>
                   </div>
 
                   <h3 className="text-base font-bold text-brand-text-primary">
@@ -85,20 +90,20 @@ export const Submissions = () => {
                   </h3>
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-brand-text-secondary">
-                    <span>{sub.courseTitle}</span>
+                    <span>{sub.courseTitle || 'UI/UX Product Design'}</span>
                     <span>•</span>
                     <span>Submitted: {sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : 'Recently'}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between md:justify-end gap-4 pt-3 md:pt-0 border-t md:border-t-0 border-brand-border/60">
-                  {sub.score !== null && isPublished ? (
+                  {hasScore ? (
                     <div className="text-right">
                       <span className="text-lg font-black text-brand-blue">
                         {sub.score}
                       </span>
                       <span className="text-xs text-brand-text-secondary font-medium">
-                        {' '}/ {sub.maxScore}
+                        {' '}/ {sub.maxScore || 20}
                       </span>
                     </div>
                   ) : (
@@ -112,14 +117,14 @@ export const Submissions = () => {
                   <div className="flex items-center gap-2">
                     <Link to={`/student/submissions/${sub.id}`}>
                       <Button variant="outline" size="sm">
-                        Track Status
+                        View Submission
                       </Button>
                     </Link>
 
-                    {isPublished && sub.evaluationId && (
+                    {isPublished && (
                       <Link to={`/student/evaluations/${sub.evaluationId}`}>
                         <Button variant="primary" size="sm" icon={Award}>
-                          Evaluation
+                          View Evaluation
                         </Button>
                       </Link>
                     )}

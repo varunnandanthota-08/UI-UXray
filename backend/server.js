@@ -3,6 +3,7 @@ require('dotenv').config()
 const cors = require('cors')
 const express = require('express')
 const { connectDB, isDatabaseConnected } = require('./config/db')
+const requireDatabase = require('./middleware/dbCheckMiddleware')
 const authRoutes = require('./routes/authRoutes')
 const assignmentRoutes = require('./routes/assignmentRoutes')
 const submissionRoutes = require('./routes/submissionRoutes')
@@ -48,23 +49,39 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.use('/api/auth', authRoutes)
-app.use('/api/assignments', assignmentRoutes)
-app.use('/api/submissions', submissionRoutes)
+app.use('/api/auth', requireDatabase, authRoutes)
+app.use('/api/assignments', requireDatabase, assignmentRoutes)
+app.use('/api/submissions', requireDatabase, submissionRoutes)
 app.use('/api', evaluationRoutes)
-app.use('/api/re-evaluations', reevaluationRoutes)
+app.use('/api/re-evaluations', requireDatabase, reevaluationRoutes)
 
 app.use((error, _req, res, _next) => {
+  if (
+    error?.name === 'MongooseError' ||
+    (error?.message && (
+      error.message.includes('buffering timed out') ||
+      error.message.includes('before initial connection is complete')
+    ))
+  ) {
+    return res.status(503).json({ message: 'Database service is unavailable' })
+  }
   console.error(error)
   res.status(500).json({ message: 'Internal server error' })
 })
 
 async function startServer() {
   try {
-    await connectDB()
+    const dbConnected = await connectDB()
 
     app.listen(port, () => {
-      console.log(`Barabari Evaluation API listening on port ${port}`)
+      console.log(
+        `Barabari Evaluation API listening on port ${port} (database: ${dbConnected ? 'connected' : 'disconnected'})`,
+      )
+      if (!dbConnected) {
+        console.warn(
+          'Warning: Database is disconnected. Database-dependent requests will return 503 Service Unavailable.',
+        )
+      }
     })
   } catch (error) {
     console.error(

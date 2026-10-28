@@ -35,7 +35,7 @@ export const FacilitatorAuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('barabari_facilitator_user');
 
     if (token) {
-      authService.getMe()
+      authService.getMe('facilitator')
         .then((beUser) => {
           if (beUser && beUser.role === 'facilitator') {
             const activeUser = {

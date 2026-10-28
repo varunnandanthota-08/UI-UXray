@@ -9,14 +9,19 @@ import Card from '../../components/ui/Card';
 export const CourseDetails = () => {
   const { courseId } = useParams();
   const [course, setCourse] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchCourse = async () => {
       try {
         setLoading(true);
-        const res = await studentApi.getCourse(courseId);
-        setCourse(res.data);
+        const [courseRes, subRes] = await Promise.all([
+          studentApi.getCourse(courseId),
+          studentApi.getStudentSubmissions()
+        ]);
+        setCourse(courseRes.data);
+        setSubmissions(subRes.data || []);
       } catch (err) {
         console.error('Error fetching course:', err);
       } finally {
@@ -147,7 +152,7 @@ export const CourseDetails = () => {
         {/* Ordered Units List */}
         <div className="space-y-4">
           {course.units?.map((unit) => (
-            <UnitCard key={unit.id} unit={unit} courseId={course.id} />
+            <UnitCard key={unit.id} unit={unit} courseId={course.id} submissions={submissions} />
           ))}
         </div>
       </div>

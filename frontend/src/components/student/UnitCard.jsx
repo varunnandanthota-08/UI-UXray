@@ -1,15 +1,65 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ArrowRight, Award } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
+import studentApi, { resolveAssignmentAction } from '../../api/studentApi';
 
-export const UnitCard = ({ unit }) => {
-  const isCompleted = unit.status === 'COMPLETED';
-  const isCurrent = unit.status === 'CURRENT' || unit.status === 'IN_PROGRESS';
+export const UnitCard = ({ unit, submissions: passedSubmissions }) => {
+  const [submissions, setSubmissions] = useState(passedSubmissions || []);
+  const [draft, setDraft] = useState(null);
+
+  useEffect(() => {
+    if (passedSubmissions && passedSubmissions.length > 0) {
+      setSubmissions(passedSubmissions);
+    } else if (unit?.assignmentId) {
+      studentApi.getStudentSubmissions().then((res) => {
+        setSubmissions(res.data || []);
+      }).catch(() => {});
+    }
+  }, [passedSubmissions, unit?.assignmentId]);
+
+  useEffect(() => {
+    if (unit?.assignmentId) {
+      studentApi.getDraft(unit.assignmentId).then((res) => {
+        setDraft(res?.data || null);
+      }).catch(() => {});
+    }
+  }, [unit?.assignmentId]);
+
+  const action = resolveAssignmentAction({
+    assignmentId: unit.assignmentId,
+    submissions,
+    draft,
+    hasDraft: unit.hasDraft
+  });
+
+  const isCompleted = unit.status === 'COMPLETED' || action.isEvaluated;
+  const isCurrent = (unit.status === 'CURRENT' || unit.status === 'IN_PROGRESS' || action.isSubmitted || action.hasDraft) && !action.isEvaluated;
 
   const getStatusBadge = () => {
+    if (action.isEvaluated) {
+      return (
+        <Badge variant="success" size="sm" dot>
+          ✓ Completed
+        </Badge>
+      );
+    }
+    if (action.isSubmitted) {
+      return (
+        <Badge variant={action.badgeVariant} size="sm" dot>
+          ● {action.badgeLabel}
+        </Badge>
+      );
+    }
+    if (action.hasDraft) {
+      return (
+        <Badge variant="yellow" size="sm" dot>
+          ● In Progress
+        </Badge>
+      );
+    }
     if (isCompleted) {
       return (
         <Badge variant="success" size="sm" dot>
@@ -107,29 +157,40 @@ export const UnitCard = ({ unit }) => {
                   <span>Due: <strong>{unit.deadline}</strong></span>
                 </>
               )}
-              {unit.score && (
+              {action.isEvaluated && action.submission?.score !== null && action.submission?.score !== undefined ? (
+                <>
+                  <span>•</span>
+                  <span className="text-brand-blue font-bold">
+                    Evaluated: {action.submission.score} / {action.submission.maxScore || 20}
+                  </span>
+                </>
+              ) : action.isSubmitted ? (
+                <>
+                  <span>•</span>
+                  <span className="text-brand-text-secondary font-medium">
+                    Status: <strong className="text-brand-text-primary">{action.badgeLabel}</strong>
+                  </span>
+                </>
+              ) : unit.score && isCompleted ? (
                 <>
                   <span>•</span>
                   <span className="text-brand-blue font-bold">Evaluated: {unit.score}</span>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            {isCurrent ? (
-              <Link to={`/student/assignments/${unit.assignmentId}/submit`}>
-                <Button variant="primary" size="sm" icon={ArrowRight} iconPosition="right">
-                  Submit Assignment
-                </Button>
-              </Link>
-            ) : (
-              <Link to={`/student/assignments/${unit.assignmentId}`}>
-                <Button variant="outline" size="sm">
-                  View Assignment
-                </Button>
-              </Link>
-            )}
+            <Link to={action.link}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={action.isEvaluated ? Award : ArrowRight}
+                iconPosition="right"
+              >
+                {action.label}
+              </Button>
+            </Link>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import studentApi from '../../api/studentApi';
+import studentApi, { resolveAssignmentAction } from '../../api/studentApi';
 import { ArrowLeft, Calendar, Clock, ArrowRight, Award, CheckCircle2, BookOpen } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -9,14 +9,24 @@ import { CardSkeleton } from '../../components/ui/Skeleton';
 export const UnitDetails = () => {
   const { unitId } = useParams();
   const [unit, setUnit] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUnit = async () => {
+    const fetchUnitAndSubmissions = async () => {
       try {
         setLoading(true);
-        const res = await studentApi.getUnit(unitId);
-        setUnit(res.data);
+        const [unitRes, subRes] = await Promise.all([
+          studentApi.getUnit(unitId),
+          studentApi.getStudentSubmissions()
+        ]);
+        setUnit(unitRes.data);
+        setSubmissions(subRes.data || []);
+        if (unitRes.data?.associatedAssignment?.id) {
+          const draftRes = await studentApi.getDraft(unitRes.data.associatedAssignment.id);
+          setDraft(draftRes?.data || null);
+        }
       } catch (err) {
         console.error('Error fetching unit:', err);
       } finally {
@@ -24,7 +34,7 @@ export const UnitDetails = () => {
       }
     };
 
-    fetchUnit();
+    fetchUnitAndSubmissions();
   }, [unitId]);
 
   if (loading || !unit) {
@@ -37,8 +47,14 @@ export const UnitDetails = () => {
   }
 
   const asg = unit.associatedAssignment;
-  const isCompleted = unit.status === 'COMPLETED';
-  const isCurrent = unit.status === 'CURRENT' || unit.status === 'IN_PROGRESS';
+  const action = resolveAssignmentAction({
+    assignmentId: asg?.id,
+    submissions,
+    draft,
+    hasDraft: asg?.hasDraft
+  });
+  const isCompleted = unit.status === 'COMPLETED' || action.isEvaluated;
+  const isCurrent = (unit.status === 'CURRENT' || unit.status === 'IN_PROGRESS' || action.isSubmitted || action.hasDraft) && !action.isEvaluated;
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
@@ -149,15 +165,22 @@ export const UnitDetails = () => {
                 <span>•</span>
                 <div className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-brand-text-secondary" />
-                  <span>Status: <strong className="text-brand-text-primary">{asg.status}</strong></span>
+                  <span>Status: <strong className="text-brand-text-primary">{action.badgeLabel}</strong></span>
                 </div>
               </div>
 
-              <Link to={`/student/assignments/${asg.id}`}>
-                <Button variant="primary" size="md" icon={ArrowRight} iconPosition="right">
-                  Open Assignment
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link to={`/student/assignments/${asg.id}`}>
+                  <Button variant="outline" size="md">
+                    Assignment Specs
+                  </Button>
+                </Link>
+                <Link to={action.link}>
+                  <Button variant="primary" size="md" icon={action.isEvaluated ? Award : ArrowRight} iconPosition="right">
+                    {action.label}
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
